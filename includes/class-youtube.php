@@ -317,6 +317,10 @@ class MWM_YouTube {
 		}
 		update_post_meta( $post_id, 'playlist_id', $pl['id'] );
 		update_post_meta( $post_id, 'duration_seconds', $data['seconds'] );
+		// Keep synced videos in the right format as durations come in; never touch lessons Kym added or we imported.
+		if ( ! $created && ! get_post_meta( $post_id, 'source_id', true ) && mwm_get_term_slug( $post_id, 'mwm_format' ) !== 'lesson' ) {
+			wp_set_object_terms( $post_id, self::format_for( $data, $pl ), 'mwm_format' );
+		}
 		update_post_meta( $post_id, 'thumbnail_url', $data['thumbnail'] );
 		update_post_meta( $post_id, 'yt_published', $data['published'] );
 		update_post_meta( $post_id, 'last_synced', time() );
@@ -327,10 +331,11 @@ class MWM_YouTube {
 	 * Shorts (up to 3 minutes) go to Quick Maths; longer videos from a themed playlist are Gaming & Story lessons.
 	 */
 	public static function format_for( array $data, array $pl ): string {
-		if ( $pl['format'] === 'short' ) {
+		$is_short = $data['seconds'] > 0 && $data['seconds'] <= 180;
+		if ( $is_short ) {
 			return 'short';
 		}
-		return ( $data['seconds'] > 0 && $data['seconds'] <= 180 ) ? 'short' : 'gaming';
+		return $pl['theme'] ? 'gaming' : 'lesson';
 	}
 
 	private static function clean_title( string $title ): string {
