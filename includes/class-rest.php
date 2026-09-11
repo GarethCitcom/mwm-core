@@ -227,6 +227,7 @@ class MWM_REST {
 		wp_set_object_terms( $id, 'lesson', 'mwm_format' );
 		if ( $level && isset( mwm_levels()[ $level ] ) ) {
 			wp_set_object_terms( $id, $level, 'mwm_level' );
+			delete_post_meta( $id, 'needs_level_review' ); // Kym has chosen a level in the Studio.
 		}
 		if ( $topic ) {
 			$term = get_term_by( 'slug', $topic, 'mwm_topic' );
@@ -406,11 +407,12 @@ class MWM_REST {
 				if ( $c['has_quiz'] ) {
 					$extras[] = 'quiz';
 				}
+				$review = get_post_meta( $c['id'], 'needs_level_review', true ) ? 'level needs checking' : '';
 				$rows[] = [
 					'id'    => $c['id'],
 					'kind'  => 'Lesson',
 					'title' => $c['title'],
-					'meta'  => implode( ' · ', array_filter( [ $c['level'], $c['topic'], $extras ? implode( ' + ', $extras ) : '' ] ) ),
+					'meta'  => implode( ' · ', array_filter( [ $c['level'], $c['topic'], $extras ? implode( ' + ', $extras ) : '', $review ] ) ),
 					'url'   => $c['url'],
 					'date'  => get_post_field( 'post_date', $c['id'] ),
 					'added' => 'Lesson · added ' . mwm_relative_label( get_post_field( 'post_date', $c['id'] ) ),
