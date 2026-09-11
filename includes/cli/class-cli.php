@@ -43,7 +43,9 @@ class MWM_CLI {
 	}
 
 	private function remove_demo(): void {
-		$posts = get_posts( [ 'post_type' => 'any', 'post_status' => 'any', 'posts_per_page' => -1, 'fields' => 'ids', 'meta_key' => self::DEMO_META, 'no_found_rows' => true ] );
+		// Explicit post types: 'any' would skip the non-public ones (pathways, exam dates).
+		$types = [ 'mwm_lesson', 'mwm_quiz', 'mwm_pathway', 'mwm_exam_date', 'mwm_past_paper' ];
+		$posts = get_posts( [ 'post_type' => $types, 'post_status' => 'any', 'posts_per_page' => -1, 'fields' => 'ids', 'meta_key' => self::DEMO_META, 'no_found_rows' => true ] );
 		$atts  = get_posts( [ 'post_type' => 'attachment', 'post_status' => 'any', 'posts_per_page' => -1, 'fields' => 'ids', 'meta_key' => self::DEMO_META, 'no_found_rows' => true ] );
 		foreach ( array_unique( array_merge( $posts, $atts ) ) as $id ) {
 			if ( get_post_type( $id ) === 'attachment' ) {
@@ -51,6 +53,13 @@ class MWM_CLI {
 			} else {
 				wp_delete_post( $id, true );
 			}
+		}
+		// The home hero may point at a demo lesson; let it fall back to the newest real one.
+		$pages = (array) get_option( 'mwm_pages', [] );
+		if ( ! empty( $pages['home'] ) ) {
+			$content = (string) get_post_field( 'post_content', $pages['home'] );
+			$content = preg_replace( '/<!-- wp:acf\/home-hero(?: \{.*?\})? \/-->/', '<!-- wp:acf/home-hero /-->', $content, 1 );
+			wp_update_post( [ 'ID' => $pages['home'], 'post_content' => $content ] );
 		}
 		WP_CLI::success( sprintf( 'Removed %d demo items.', count( $posts ) + count( $atts ) ) );
 	}
