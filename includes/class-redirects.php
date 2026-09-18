@@ -91,6 +91,13 @@ class MWM_Redirects {
 				}
 			}
 		}
+		// Old /revision/{board}/ past paper pages → the new past papers page, filtered to that board.
+		$pp = mwm_page_url( 'past-papers' );
+		if ( $pp && get_posts( [ 'post_type' => 'mwm_past_paper', 'post_status' => 'publish', 'posts_per_page' => 1, 'fields' => 'ids', 'no_found_rows' => true ] ) ) {
+			foreach ( array_keys( mwm_boards() ) as $slug ) {
+				$map[ "/revision/$slug/" ] = wp_make_link_relative( add_query_arg( 'board', $slug, $pp ) );
+			}
+		}
 		ksort( $map );
 		return $map;
 	}

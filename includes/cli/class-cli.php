@@ -569,6 +569,33 @@ class MWM_CLI {
 	}
 
 	/**
+	 * Import past papers (question papers, mark schemes, revision worksheets) from the old site's /revision/{board}/ pages.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--board=<slugs>]
+	 * : Only these boards (comma-separated: edexcel, aqa, ocr). Default: all three.
+	 *
+	 * [--base=<url>]
+	 * : Old site URL. Default: https://mathswithmelissa.co.uk
+	 *
+	 * [--dry-run]
+	 * : List what would be imported without downloading or creating anything.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp mwm import-past-papers --dry-run
+	 *     wp mwm import-past-papers --board=edexcel
+	 *
+	 * @subcommand import-past-papers
+	 * @when after_wp_load
+	 */
+	public function import_past_papers( array $args, array $assoc ): void {
+		require_once MWM_CORE_DIR . 'includes/cli/class-past-paper-importer.php';
+		( new MWM_Past_Paper_Importer( $assoc ) )->run();
+	}
+
+	/**
 	 * Move worksheet PDFs that sit directly on lessons (the original data model) onto worksheet posts.
 	 *
 	 * ## OPTIONS
