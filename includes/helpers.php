@@ -466,6 +466,19 @@ function mwm_query_worksheets_paged( array $args = [] ): array {
 	}
 	$query = new WP_Query( $q );
 	$out   = [];
+	// Load the lessons and PDFs behind this page of worksheets up front (two queries instead of several per card).
+	$related = [];
+	foreach ( $query->posts as $p ) {
+		foreach ( [ 'lesson', 'pdf', 'answers' ] as $key ) {
+			$rid = (int) get_post_meta( $p->ID, $key, true );
+			if ( $rid ) {
+				$related[] = $rid;
+			}
+		}
+	}
+	if ( $related ) {
+		_prime_post_caches( array_unique( $related ), true, true );
+	}
 	foreach ( $query->posts as $p ) {
 		$d = mwm_worksheet_data( $p, false );
 		if ( $d ) {
