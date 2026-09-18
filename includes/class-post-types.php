@@ -32,6 +32,9 @@ class MWM_Post_Types {
 		} );
 		add_filter( 'wp_insert_post_data', [ __CLASS__, 'auto_titles' ], 10, 2 );
 		add_action( 'save_post_mwm_lesson', [ __CLASS__, 'on_save_lesson' ], 20, 2 );
+		foreach ( [ 'save_post_mwm_lesson', 'trashed_post', 'untrashed_post', 'deleted_post' ] as $hook ) { // Home page topic counts are cached.
+			add_action( $hook, static function () { delete_transient( 'mwm_topic_browser' ); } );
+		}
 		add_action( 'save_post_mwm_quiz', [ __CLASS__, 'on_save_quiz' ], 20, 2 );
 		add_action( 'save_post_mwm_worksheet', [ __CLASS__, 'on_save_worksheet' ], 20, 2 );
 		foreach ( [ 'trashed_post', 'untrashed_post', 'deleted_post' ] as $hook ) {

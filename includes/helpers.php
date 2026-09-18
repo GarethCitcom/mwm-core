@@ -308,7 +308,11 @@ function mwm_lesson_topic_terms( int $post_id ): array {
  * Quiz post attached to a lesson, or null.
  */
 function mwm_lesson_quiz( int $lesson_id ): ?WP_Post {
-	$indexed = (int) get_post_meta( $lesson_id, 'quiz_post', true );
+	$raw     = get_post_meta( $lesson_id, 'quiz_post', true );
+	$indexed = (int) $raw;
+	if ( $raw !== '' && ! $indexed ) {
+		return null; // Indexed as "no quiz".
+	}
 	if ( $indexed ) {
 		$q = get_post( $indexed );
 		if ( $q && $q->post_type === 'mwm_quiz' && $q->post_status === 'publish' && (int) get_post_meta( $q->ID, 'lesson', true ) === $lesson_id ) {
@@ -336,7 +340,7 @@ function mwm_reindex_lesson_quiz( int $lesson_id ): int {
 		update_post_meta( $lesson_id, 'quiz_post', (int) $q[0] );
 		return (int) $q[0];
 	}
-	delete_post_meta( $lesson_id, 'quiz_post' );
+	update_post_meta( $lesson_id, 'quiz_post', 0 );
 	return 0;
 }
 
@@ -348,12 +352,15 @@ function mwm_reindex_lesson_quiz( int $lesson_id ): int {
  * The worksheet post attached to a lesson, or null. Cached in the lesson's `worksheet_post` meta.
  */
 function mwm_lesson_worksheet( int $lesson_id ): ?WP_Post {
-	$id = (int) get_post_meta( $lesson_id, 'worksheet_post', true );
+	$raw = get_post_meta( $lesson_id, 'worksheet_post', true );
+	$id  = (int) $raw;
 	if ( $id ) {
 		$w = get_post( $id );
 		if ( $w && $w->post_type === 'mwm_worksheet' && $w->post_status === 'publish' ) {
 			return $w;
 		}
+	} elseif ( $raw !== '' ) {
+		return null; // Indexed as "no worksheet" — no lookup needed (keeps listing pages to a handful of queries).
 	}
 	$found = get_posts( [
 		'post_type'      => 'mwm_worksheet',
@@ -368,9 +375,7 @@ function mwm_lesson_worksheet( int $lesson_id ): ?WP_Post {
 		update_post_meta( $lesson_id, 'worksheet_post', $found[0] );
 		return get_post( $found[0] );
 	}
-	if ( $id ) {
-		delete_post_meta( $lesson_id, 'worksheet_post' );
-	}
+	update_post_meta( $lesson_id, 'worksheet_post', 0 );
 	return null;
 }
 
@@ -529,13 +534,51 @@ function mwm_upsert_worksheet( int $lesson_id, int $pdf_id, int $answers_id = 0,
 	return $ws_id;
 }
 
+/**
+ * Load the worksheet, quiz and PDF posts behind a page of lessons in two queries instead of several per card.
+ *
+ * @param WP_Post[] $posts
+ */
+function mwm_prime_lesson_relations( array $posts ): void {
+	$related = [];
+	foreach ( $posts as $p ) {
+		foreach ( [ 'worksheet_post', 'quiz_post' ] as $key ) {
+			$rid = (int) get_post_meta( $p->ID, $key, true );
+			if ( $rid ) {
+				$related[] = $rid;
+			}
+		}
+	}
+	if ( ! $related ) {
+		return;
+	}
+	_prime_post_caches( array_unique( $related ), true, true ); // Terms too: worksheet cards read level/topic.
+	$files = [];
+	foreach ( $related as $rid ) {
+		foreach ( [ 'pdf', 'answers' ] as $key ) {
+			$fid = (int) get_post_meta( $rid, $key, true );
+			if ( $fid ) {
+				$files[] = $fid;
+			}
+		}
+	}
+	if ( $files ) {
+		_prime_post_caches( array_unique( $files ), false, true );
+	}
+}
+
 function mwm_attachment_info( $attachment ): ?array {
 	$id = is_array( $attachment ) ? ( $attachment['ID'] ?? 0 ) : (int) $attachment;
 	if ( ! $id || get_post_type( $id ) !== 'attachment' ) {
 		return null;
 	}
-	$path = get_attached_file( $id );
-	$size = $path && file_exists( $path ) ? (int) filesize( $path ) : 0;
+	$size = get_post_meta( $id, '_mwm_filesize', true );
+	if ( $size === '' ) { // Remember the size so listing pages don't stat the file for every card.
+		$path = get_attached_file( $id );
+		$size = $path && file_exists( $path ) ? (int) filesize( $path ) : 0;
+		update_post_meta( $id, '_mwm_filesize', $size );
+	}
+	$size = (int) $size;
 	return [
 		'id'    => $id,
 		'url'   => wp_get_attachment_url( $id ),
@@ -619,6 +662,13 @@ function mwm_lesson_card( $post ): ?array {
  *   level, topic, subtopic, format (lesson|short|gaming|array), theme, worksheet(bool), quiz(bool), search, per_page, exclude, orderby
  * }
  */
+/**
+ * How many lessons match, without building any cards.
+ */
+function mwm_count_lessons( array $args = [] ): int {
+	return mwm_query_lessons_paged( [ 'count_only' => true ] + $args )['total'];
+}
+
 function mwm_query_lessons( array $args = [] ): array {
 	return mwm_query_lessons_paged( $args )['items'];
 }
@@ -680,7 +730,15 @@ function mwm_query_lessons_paged( array $args = [] ): array {
 			[ 'key' => 'video_status', 'value' => [ 'missing', 'private', 'unembeddable', 'invalid' ], 'compare' => 'NOT IN' ],
 		];
 	}
+	if ( ! empty( $a['count_only'] ) ) { // Just the number: no cards, no meta, one cheap query.
+		$q['fields']         = 'ids';
+		$q['posts_per_page'] = 1;
+		$q['paged']          = 1;
+		$q['no_found_rows']  = false;
+		return [ 'items' => [], 'total' => (int) ( new WP_Query( $q ) )->found_posts, 'pages' => 0, 'page' => 1, 'per_page' => 1 ];
+	}
 	$query = new WP_Query( $q );
+	mwm_prime_lesson_relations( $query->posts );
 	$cards = [];
 	foreach ( $query->posts as $p ) {
 		$card = mwm_lesson_card( $p );
