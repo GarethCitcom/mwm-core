@@ -501,7 +501,7 @@ function mwm_upsert_worksheet( int $lesson_id, int $pdf_id, int $answers_id = 0,
 			'post_type'   => 'mwm_worksheet',
 			'post_status' => 'publish',
 			'post_title'  => $title ?: 'Worksheet',
-			'post_name'   => sanitize_title( $title ) . '-worksheet',
+			'post_name'   => sanitize_title( $title ) . ( preg_match( '/worksheets?$/i', trim( $title ) ) ? '' : '-worksheet' ),
 			'post_date'   => $lesson_id ? get_post_field( 'post_date', $lesson_id ) : current_time( 'mysql' ),
 		] );
 		if ( ! $ws_id ) {
@@ -627,7 +627,7 @@ function mwm_query_lessons( array $args = [] ): array {
  * Paged lesson query. Returns ['items' => cards, 'total' => int, 'pages' => int, 'page' => int, 'per_page' => int].
  */
 function mwm_query_lessons_paged( array $args = [] ): array {
-	$defaults = [ 'level' => '', 'topic' => '', 'subtopic' => '', 'format' => '', 'theme' => '', 'worksheet' => false, 'quiz' => false, 'search' => '', 'per_page' => -1, 'page' => 1, 'exclude' => [], 'orderby' => 'date', 'order' => 'DESC', 'include' => [], 'status' => 'publish' ];
+	$defaults = [ 'level' => '', 'topic' => '', 'subtopic' => '', 'format' => '', 'theme' => '', 'worksheet' => false, 'quiz' => false, 'search' => '', 'per_page' => -1, 'page' => 1, 'exclude' => [], 'orderby' => 'date', 'order' => 'DESC', 'include' => [], 'status' => 'publish', 'hide_broken' => true ];
 	$a        = array_merge( $defaults, $args );
 	$tax      = [];
 	if ( $a['level'] ) {
@@ -672,6 +672,13 @@ function mwm_query_lessons_paged( array $args = [] ): array {
 	}
 	if ( $a['quiz'] ) {
 		$q['meta_query'][] = [ 'key' => 'quiz_post', 'value' => '0', 'compare' => '>', 'type' => 'NUMERIC' ];
+	}
+	if ( $a['hide_broken'] ) { // Lessons whose video is gone from YouTube stay off public listings until Kym fixes them.
+		$q['meta_query'][] = [
+			'relation' => 'OR',
+			[ 'key' => 'video_status', 'compare' => 'NOT EXISTS' ],
+			[ 'key' => 'video_status', 'value' => [ 'missing', 'private', 'unembeddable', 'invalid' ], 'compare' => 'NOT IN' ],
+		];
 	}
 	$query = new WP_Query( $q );
 	$cards = [];

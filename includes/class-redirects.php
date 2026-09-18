@@ -9,9 +9,45 @@ class MWM_Redirects {
 
 	public static function init(): void {
 		add_action( 'template_redirect', [ __CLASS__, 'maybe_redirect' ], 1 );
+		// Unknown URLs must 404 (so the map below applies) rather than be "guessed" to a similar-looking lesson.
+		add_filter( 'do_redirect_guess_404_permalink', '__return_false' );
+	}
+
+	/**
+	 * Taxonomy archives (/topic/algebra/, /level/gcse-higher/…) duplicate the real Learn Maths pages: send them there.
+	 */
+	private static function taxonomy_target(): string {
+		$term = get_queried_object();
+		if ( ! $term instanceof WP_Term ) {
+			return '';
+		}
+		switch ( $term->taxonomy ) {
+			case 'mwm_level':
+				return mwm_browse_url( $term->slug );
+			case 'mwm_topic':
+				$top    = $term->parent ? get_term( $term->parent, 'mwm_topic' ) : $term;
+				$levels = array_values( array_filter( (array) get_term_meta( $top->term_id, 'levels', true ) ) );
+				$level  = $levels[0] ?? 'gcse-foundation';
+				$url    = mwm_browse_url( $level, $top->slug );
+				return $term->parent ? add_query_arg( 'subtopic', $term->slug, $url ) : $url;
+			case 'mwm_theme':
+				return add_query_arg( 'theme', $term->slug, mwm_page_url( 'gaming' ) );
+			case 'mwm_format':
+				return $term->slug === 'short' ? mwm_page_url( 'quick-maths' ) : ( $term->slug === 'gaming' ? mwm_page_url( 'gaming' ) : mwm_page_url( 'browse' ) );
+			case 'mwm_board':
+				return add_query_arg( 'board', $term->slug, mwm_page_url( 'past-papers' ) );
+		}
+		return '';
 	}
 
 	public static function maybe_redirect(): void {
+		if ( is_tax() || is_tag() || is_category() ) {
+			$target = self::taxonomy_target();
+			if ( $target ) {
+				wp_redirect( $target, 301 );
+				exit;
+			}
+		}
 		if ( ! is_404() ) {
 			return;
 		}
@@ -91,6 +127,17 @@ class MWM_Redirects {
 				}
 			}
 		}
+		// Old site sections that have no post behind them.
+		$old_topics = [ 'algebra' => 'algebra', 'number' => 'number', 'percentages' => 'number', 'proportion' => 'ratio-proportion', 'geometry' => 'geometry-measures', 'probability' => 'probability', 'data' => 'statistics', 'math-in-real-life' => '' ];
+		foreach ( $old_topics as $old => $new ) {
+			$map[ "/topic/$old/" ] = wp_make_link_relative( $new ? mwm_browse_url( 'gcse-foundation', $new ) : mwm_browse_url( 'gcse-foundation' ) );
+		}
+		$map['/youtube-short-video/quick-maths/'] = wp_make_link_relative( mwm_page_url( 'quick-maths' ) );
+		foreach ( [ 'roblox', 'minecraft', 'story' ] as $theme ) {
+			$map[ "/youtube-short-video/$theme/" ] = wp_make_link_relative( add_query_arg( 'theme', $theme, mwm_page_url( 'gaming' ) ) );
+		}
+		$map['/youtube-short-video/'] = wp_make_link_relative( mwm_page_url( 'quick-maths' ) );
+		$map['/quick-revision/']      = wp_make_link_relative( mwm_page_url( 'revision' ) );
 		// Old /revision/{board}/ past paper pages → the new past papers page, filtered to that board.
 		$pp = mwm_page_url( 'past-papers' );
 		if ( $pp && get_posts( [ 'post_type' => 'mwm_past_paper', 'post_status' => 'publish', 'posts_per_page' => 1, 'fields' => 'ids', 'no_found_rows' => true ] ) ) {

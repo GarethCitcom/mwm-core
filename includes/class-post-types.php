@@ -9,6 +9,27 @@ class MWM_Post_Types {
 
 	public static function init(): void {
 		add_action( 'init', [ __CLASS__, 'register' ], 5 );
+		// Sitemaps: past papers have no page of their own (they redirect to the listing) and taxonomy archives redirect too.
+		add_filter( 'wp_sitemaps_post_types', static function ( array $types ): array {
+			unset( $types['mwm_past_paper'] );
+			return $types;
+		} );
+		add_filter( 'wp_sitemaps_posts_query_args', static function ( array $args, string $post_type ): array {
+			if ( $post_type === 'mwm_lesson' ) { // Keep lessons with a dead video out of the sitemap too.
+				$args['meta_query'] = [
+					'relation' => 'OR',
+					[ 'key' => 'video_status', 'compare' => 'NOT EXISTS' ],
+					[ 'key' => 'video_status', 'value' => [ 'missing', 'private', 'unembeddable', 'invalid' ], 'compare' => 'NOT IN' ],
+				];
+			}
+			return $args;
+		}, 10, 2 );
+		add_filter( 'wp_sitemaps_taxonomies', static function ( array $taxes ): array {
+			foreach ( [ 'mwm_level', 'mwm_topic', 'mwm_theme', 'mwm_format', 'mwm_board', 'category', 'post_tag' ] as $t ) {
+				unset( $taxes[ $t ] );
+			}
+			return $taxes;
+		} );
 		add_filter( 'wp_insert_post_data', [ __CLASS__, 'auto_titles' ], 10, 2 );
 		add_action( 'save_post_mwm_lesson', [ __CLASS__, 'on_save_lesson' ], 20, 2 );
 		add_action( 'save_post_mwm_quiz', [ __CLASS__, 'on_save_quiz' ], 20, 2 );

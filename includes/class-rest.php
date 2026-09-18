@@ -15,6 +15,19 @@ class MWM_REST {
 
 	public static function init(): void {
 		add_action( 'rest_api_init', [ __CLASS__, 'routes' ] );
+		add_filter( 'rest_post_dispatch', [ __CLASS__, 'cache_headers' ], 10, 3 );
+	}
+
+	/**
+	 * Public, anonymous GET responses (lessons, worksheets, topics…) can be cached briefly by browsers and CDNs.
+	 */
+	public static function cache_headers( $response, $server, $request ) {
+		$route = (string) $request->get_route();
+		if ( $response instanceof WP_REST_Response && $request->get_method() === 'GET' && ! is_user_logged_in()
+			&& str_starts_with( $route, '/mwm/v1/' ) && ! str_starts_with( $route, '/mwm/v1/studio' ) && ! str_starts_with( $route, '/mwm/v1/me' ) ) {
+			$response->header( 'Cache-Control', 'public, max-age=300, stale-while-revalidate=600' );
+		}
+		return $response;
 	}
 
 	public static function can_studio(): bool {
@@ -772,7 +785,7 @@ class MWM_REST {
 	public static function content_rows( string $kind = 'all', int $limit = 200 ): array {
 		$rows = [];
 		if ( in_array( $kind, [ 'all', 'lessons' ], true ) ) {
-			foreach ( mwm_query_lessons( [ 'format' => 'lesson', 'per_page' => $limit, 'status' => [ 'publish', 'draft' ] ] ) as $c ) {
+			foreach ( mwm_query_lessons( [ 'format' => 'lesson', 'per_page' => $limit, 'status' => [ 'publish', 'draft' ], 'hide_broken' => false ] ) as $c ) {
 				$is_draft = get_post_status( $c['id'] ) === 'draft';
 				$extras   = [];
 				if ( $c['has_worksheet'] ) {

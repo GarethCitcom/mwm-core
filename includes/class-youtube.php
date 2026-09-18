@@ -208,13 +208,16 @@ class MWM_YouTube {
 			$by_video[ $vid ][] = $id;
 		}
 		foreach ( array_chunk( array_keys( $by_video ), 50 ) as $chunk ) {
-			$body = self::api_get( 'videos', [ 'part' => 'status', 'id' => implode( ',', $chunk ), 'maxResults' => 50 ] );
+			$body = self::api_get( 'videos', [ 'part' => 'status,snippet', 'id' => implode( ',', $chunk ), 'maxResults' => 50 ] );
 			if ( is_wp_error( $body ) ) {
 				return $body;
 			}
-			$found = [];
+			$found = []; $thumbs = [];
 			foreach ( (array) ( $body['items'] ?? [] ) as $item ) {
 				$s = $item['status'] ?? [];
+				// While we're here, record the best thumbnail YouTube actually has (imported lessons assumed "maxres", which some videos lack).
+				$t = $item['snippet']['thumbnails'] ?? [];
+				$thumbs[ $item['id'] ] = (string) ( $t['maxres']['url'] ?? $t['standard']['url'] ?? $t['high']['url'] ?? '' );
 				if ( ( $s['privacyStatus'] ?? 'public' ) === 'private' ) {
 					$found[ $item['id'] ] = 'private';
 				} elseif ( isset( $s['embeddable'] ) && ! $s['embeddable'] ) {
@@ -229,6 +232,9 @@ class MWM_YouTube {
 				$status = $found[ $vid ] ?? 'missing';
 				foreach ( $by_video[ $vid ] as $id ) {
 					update_post_meta( $id, 'video_status', $status );
+					if ( ! empty( $thumbs[ $vid ] ) && ! has_post_thumbnail( $id ) ) {
+						update_post_meta( $id, 'thumbnail_url', $thumbs[ $vid ] );
+					}
 					update_post_meta( $id, 'video_checked', time() );
 					$counts['checked']++;
 					$counts[ $status === 'ok' ? 'ok' : 'problems' ]++;

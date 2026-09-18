@@ -19,6 +19,7 @@ $active = sanitize_key( (string) get_query_var( 'mwm_studio_view' ) ) ?: 'dash';
 	<meta charset="<?php bloginfo( 'charset' ); ?>">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="robots" content="noindex, nofollow">
+	<meta name="robots" content="noindex, nofollow">
 	<title>Studio · Maths with Melissa</title>
 	<?php wp_head(); ?>
 </head>

@@ -34,6 +34,7 @@ class MWM_Studio {
 			wp_die( '<p>This area is for the site’s teacher account. If that’s you, sign in with your usual login.</p>', 'Studio', [ 'response' => 403 ] );
 		}
 		nocache_headers();
+		header( 'X-Robots-Tag: noindex, nofollow' );
 		status_header( 200 );
 		global $wp_query;
 		$wp_query->is_404 = false;
