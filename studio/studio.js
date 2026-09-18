@@ -90,7 +90,7 @@
 
 	/* ---------------------------------------------------------------- state */
 	function freshLesson() {
-		return { id: 0, step: 1, yt: '', video: null, videoError: '', finding: false, level: 'gcse-higher', topic: 'algebra', subtopic: '', ws: null, ans: null, quizText: '', quizResult: null, quizImages: {}, copied: false, publishing: false, published: null, editingTitle: '', publishError: '' };
+		return { id: 0, step: 1, yt: '', video: null, videoError: '', finding: false, title: '', level: 'gcse-higher', topic: 'algebra', subtopic: '', ws: null, ans: null, quizText: '', quizResult: null, quizImages: {}, copied: false, publishing: false, published: null, editingTitle: '', publishError: '' };
 	}
 	function freshPaper(keep) {
 		var now = new Date();
@@ -171,6 +171,9 @@
 		}
 		if (L.step === 2) {
 			var topic = B.topics.filter(function (t) { return t.slug === L.topic; })[0];
+			html += '<div class="st-panel"><h2>What’s it called?</h2><p class="st-panel__sub">Students see this as the lesson title. It starts as the YouTube title — shorten it or tidy it up if you like.</p>' +
+				'<div class="st-inputrow" style="margin-top:12px"><input type="text" class="st-input" value="' + esc(lessonTitle()) + '" placeholder="e.g. Solving quadratics by factorising" aria-label="Lesson title" maxlength="140" data-lesson-title></div>' +
+				(L.video && L.title && L.title !== L.video.title ? '<p class="st-note st-note--8">On YouTube it’s “' + esc(L.video.title) + '” — <button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-title-reset>use that instead</button></p>' : '') + '</div>';
 			html += '<div class="st-panel"><h2>Where does it belong?</h2><p class="st-panel__sub">Not sure? Pick the closest — you can change it any time.</p>' +
 				'<div class="st-label">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, L.level === l.slug, { level: l.slug }); }).join('') + '</div>' +
 				'<div class="st-label st-label--24">Topic</div><div class="st-chips">' + B.topics.map(function (t) { return chip(t.name, L.topic === t.slug, { topic: t.slug }); }).join('') + '</div>';
@@ -209,7 +212,7 @@
 				var mins = L.video && L.video.minutes_label ? L.video.minutes_label : '';
 				html += '<div class="st-panel"><h2>Check it, then publish</h2><p class="st-panel__sub">This is exactly how students will see it.</p>' +
 					'<div class="st-preview"><span class="st-preview__thumb" style="background-image:url(' + esc(L.video ? L.video.thumbnail : '') + ')"></span><div class="st-preview__body"><div class="mwm-tags">' + tag(levelName(L.level), 'mwm-tag--higher') + tag(topicName(L.subtopic || L.topic), 'mwm-tag--outline') + '</div>' +
-					'<div class="st-preview__title">' + esc(L.video ? L.video.title : L.editingTitle) + '</div><div class="st-preview__meta">' + esc([mins].concat(extras).filter(Boolean).join(' · ')) + '</div></div></div>' +
+					'<div class="st-preview__title">' + esc(lessonTitle()) + '</div><div class="st-preview__meta">' + esc([mins].concat(extras).filter(Boolean).join(' · ')) + '</div></div></div>' +
 					'<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish" data-publish' + (L.publishing ? ' disabled' : '') + '>' + (L.publishing ? 'Publishing…' : (L.id ? 'Publish changes' : 'Publish lesson')) + '</button>' +
 					(L.publishError ? '<p class="st-error">' + esc(L.publishError) + '</p>' : '') +
 					'<p class="st-note">It goes live straight away — and you can take it down again just as quickly.</p></div>';
@@ -524,6 +527,11 @@
 	function go(view) { S.view = view; window.scrollTo(0, 0); render(); }
 
 	/* ---------------------------------------------------------------- actions */
+	/* The lesson title as it will be saved: Kym's edit, else the YouTube title, else the title of the lesson being edited. */
+	function lessonTitle() {
+		var L = S.lesson;
+		return (L.title || '').trim() || (L.video ? L.video.title : '') || L.editingTitle || '';
+	}
 	/* The ChatGPT quiz prompt, with the first line filled in from what Kym chose in steps 1–2. */
 	function quizPrompt() {
 		var L = S.lesson;
@@ -531,7 +539,7 @@
 		var level = levelName(L.level) || 'GCSE';
 		var topic = topicName(L.topic);
 		var sub = L.subtopic ? topicName(L.subtopic) : '';
-		var title = L.video ? L.video.title : '';
+		var title = lessonTitle();
 		var where = topic ? ' (topic: ' + topic + (sub ? ' · ' + sub : '') + ')' : '';
 		lines[0] = 'Write a 5-question ' + (level === 'A-level' ? 'A-level' : 'GCSE') + ' maths quiz for ' + level + ' students' +
 			(title ? ' based on my lesson “' + title + '”' + where + '. Only test what that lesson covers.' : (topic ? ' about ' + topic + (sub ? ' · ' + sub : '') + '.' : ' about [YOUR TOPIC].'));
@@ -541,7 +549,7 @@
 		var L = S.lesson;
 		L.yt = url; L.videoError = ''; L.video = null; L.finding = true; render();
 		api('studio/video?url=' + encodeURIComponent(url)).then(function (v) {
-			L.video = v; L.finding = false; if (then) { then(v); } render();
+			L.video = v; L.finding = false; L.title = ''; /* a new video: the title follows it until Kym edits it */ if (then) { then(v); } render();
 		}).catch(function (e) { L.videoError = e.message; L.finding = false; render(); });
 	}
 
@@ -630,7 +638,7 @@
 	function publishLesson() {
 		var L = S.lesson;
 		L.publishing = true; L.publishError = ''; render();
-		var body = { id: L.id, youtube_url: L.video ? L.video.id : L.yt, title: L.video ? L.video.title : '', level: L.level, topic: L.subtopic || L.topic, worksheet: L.ws ? L.ws.id : 0, answers: L.ans ? L.ans.id : 0, seconds: L.video ? L.video.seconds : undefined, thumbnail: L.video ? L.video.thumbnail : undefined };
+		var body = { id: L.id, youtube_url: L.video ? L.video.id : L.yt, title: lessonTitle(), level: L.level, topic: L.subtopic || L.topic, worksheet: L.ws ? L.ws.id : 0, answers: L.ans ? L.ans.id : 0, seconds: L.video ? L.video.seconds : undefined, thumbnail: L.video ? L.video.thumbnail : undefined };
 		var quiz = quizPayload();
 		if (quiz !== undefined) { body.quiz = quiz; }
 		api('studio/lessons', { method: 'POST', body: body }).then(function (card) {
@@ -676,7 +684,7 @@
 			api('studio/lessons/' + lessonId).then(function (c) {
 				root.classList.remove('st-busy');
 				var L = freshLesson();
-				L.id = c.id; L.editingTitle = c.title; L.yt = c.youtube_url; L.level = c.level_slug || 'gcse-higher';
+				L.id = c.id; L.editingTitle = c.title; L.title = c.title; L.yt = c.youtube_url; L.level = c.level_slug || 'gcse-higher';
 				L.topic = c.topic_slug || 'number'; L.subtopic = c.subtopic_slug || '';
 				L.video = { id: c.youtube_id, title: c.title, thumbnail: c.thumb, seconds: c.seconds, duration_label: '', minutes_label: c.duration, published_label: c.published_label ? '' : '', existing_id: c.id };
 				L.ws = c.worksheet ? { id: c.worksheet.id, filename: c.worksheet.name, url: c.worksheet.url } : null;
@@ -761,6 +769,7 @@
 		}
 		if (e.target.matches('[data-picker-input]')) { var pb = e.target.closest('[data-picker]'); pickerPaint(pb, e.target.value); pickerOpen(pb, true); return; }
 		if (e.target.matches('[data-yt]')) { S.lesson.yt = e.target.value; }
+		if (e.target.matches('[data-lesson-title]')) { S.lesson.title = e.target.value; }
 		if (e.target.matches('[data-quiz-text]')) { S.lesson.quizText = e.target.value; S.lesson.quizResult = null; }
 		if (e.target.matches('[data-ed="date"]')) { S.ed.date = e.target.value; S.ed.error = ''; render(); }
 		// Pathway editor: text inputs update state without re-rendering, so typing keeps focus.
@@ -817,6 +826,7 @@
 		if ((el = e.target.closest('[data-picker-create]'))) { pickerCreate(el.closest('[data-picker]'), el.getAttribute('data-picker-create')); return; }
 		if ((el = e.target.closest('[data-picker-clear]'))) { pickerState(el.closest('[data-picker]').getAttribute('data-picker')).subtopic = ''; render(); return; }
 		// Lesson wizard
+		if ((el = e.target.closest('[data-title-reset]'))) { L.title = L.video ? L.video.title : ''; render(); return; }
 		if ((el = e.target.closest('[data-level]'))) { L.level = el.getAttribute('data-level'); render(); return; }
 		if ((el = e.target.closest('[data-topic]'))) { L.topic = el.getAttribute('data-topic'); L.subtopic = ''; render(); return; }
 		if ((el = e.target.closest('[data-copy]'))) {
