@@ -611,7 +611,9 @@ function mwm_query_lessons( array $args = [] ): array {
 	if ( $a['format'] ) {
 		$tax[] = [ 'taxonomy' => 'mwm_format', 'field' => 'slug', 'terms' => (array) $a['format'] ];
 	}
-	if ( $a['theme'] ) {
+	if ( $a['theme'] === 'none' ) {
+		$tax[] = [ 'taxonomy' => 'mwm_theme', 'operator' => 'NOT EXISTS' ];
+	} elseif ( $a['theme'] ) {
 		$tax[] = [ 'taxonomy' => 'mwm_theme', 'field' => 'slug', 'terms' => (array) $a['theme'] ];
 	}
 	$q = [
