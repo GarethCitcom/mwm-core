@@ -69,10 +69,18 @@ class MWM_Redirects {
 			'no_found_rows'  => true,
 			'meta_key'       => 'source_id',
 		] );
-		foreach ( $posts as $id ) {
+		$worksheets = get_posts( [
+			'post_type'      => 'mwm_worksheet',
+			'post_status'    => 'publish',
+			'posts_per_page' => -1,
+			'fields'         => 'ids',
+			'no_found_rows'  => true,
+			'meta_key'       => 'source_url',
+		] );
+		foreach ( array_merge( $posts, $worksheets ) as $id ) {
 			$source_id = (int) get_post_meta( $id, 'source_id', true );
 			$new       = wp_make_link_relative( get_permalink( $id ) );
-			if ( $source_id ) {
+			if ( $source_id && get_post_type( $id ) === 'mwm_lesson' ) {
 				$map[ "/lesson/{$source_id}/" ] = $new;
 			}
 			$source_url = (string) get_post_meta( $id, 'source_url', true );

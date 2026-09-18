@@ -569,6 +569,62 @@ class MWM_CLI {
 	}
 
 	/**
+	 * Move worksheet PDFs that sit directly on lessons (the original data model) onto worksheet posts.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--dry-run]
+	 * : List what would change.
+	 *
+	 * @subcommand migrate-worksheets
+	 * @when after_wp_load
+	 */
+	public function migrate_worksheets( array $args, array $assoc ): void {
+		$ids = get_posts( [ 'post_type' => 'mwm_lesson', 'post_status' => 'any', 'posts_per_page' => -1, 'fields' => 'ids', 'no_found_rows' => true, 'meta_key' => 'worksheet' ] );
+		$made = 0;
+		foreach ( $ids as $id ) {
+			$pdf = (int) get_post_meta( $id, 'worksheet', true );
+			$ans = (int) get_post_meta( $id, 'answers', true );
+			if ( ! $pdf || get_post_type( $pdf ) !== 'attachment' ) {
+				continue;
+			}
+			if ( isset( $assoc['dry-run'] ) ) {
+				WP_CLI::log( sprintf( '  #%d %s → worksheet (pdf #%d%s)', $id, get_the_title( $id ), $pdf, $ans ? ", answers #$ans" : '' ) );
+				continue;
+			}
+			$ws = mwm_upsert_worksheet( $id, $pdf, $ans );
+			if ( $ws ) {
+				delete_post_meta( $id, 'worksheet' );
+				delete_post_meta( $id, 'answers' );
+				$made++;
+				WP_CLI::log( sprintf( '  #%d %s → worksheet #%d %s', $id, get_the_title( $id ), $ws, get_permalink( $ws ) ) );
+			}
+		}
+		WP_CLI::success( sprintf( '%d lessons looked at, %d worksheet pages created.', count( $ids ), $made ) );
+	}
+
+	/**
+	 * Pull the old site's worksheet pages (titles, slugs, topics) and match them to the worksheets we already hold
+	 * by PDF, so the old /worksheets/{slug}/ URLs redirect and titles match what students knew.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--source=<url>]
+	 * : Old site base URL. Default: https://mathswithmelissa.co.uk
+	 *
+	 * [--dry-run]
+	 * : Show matches without changing anything.
+	 *
+	 * @subcommand import-worksheets
+	 * @when after_wp_load
+	 */
+	public function import_worksheets( array $args, array $assoc ): void {
+		require_once MWM_CORE_DIR . 'includes/cli/class-importer.php';
+		$importer = new MWM_Importer( array_merge( [ 'source' => 'https://mathswithmelissa.co.uk' ], $assoc ) );
+		$importer->run_worksheets();
+	}
+
+	/**
 	 * Build the 301 redirect map from imported lessons.
 	 *
 	 * ## OPTIONS

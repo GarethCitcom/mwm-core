@@ -332,6 +332,180 @@ function mwm_lesson_quiz( int $lesson_id ): ?WP_Post {
 	return null;
 }
 
+/* -------------------------------------------------------------------------
+ * Worksheets
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The worksheet post attached to a lesson, or null. Cached in the lesson's `worksheet_post` meta.
+ */
+function mwm_lesson_worksheet( int $lesson_id ): ?WP_Post {
+	$id = (int) get_post_meta( $lesson_id, 'worksheet_post', true );
+	if ( $id ) {
+		$w = get_post( $id );
+		if ( $w && $w->post_type === 'mwm_worksheet' && $w->post_status === 'publish' ) {
+			return $w;
+		}
+	}
+	$found = get_posts( [
+		'post_type'      => 'mwm_worksheet',
+		'post_status'    => 'publish',
+		'posts_per_page' => 1,
+		'fields'         => 'ids',
+		'no_found_rows'  => true,
+		'meta_key'       => 'lesson',
+		'meta_value'     => $lesson_id,
+	] );
+	if ( $found ) {
+		update_post_meta( $lesson_id, 'worksheet_post', $found[0] );
+		return get_post( $found[0] );
+	}
+	if ( $id ) {
+		delete_post_meta( $lesson_id, 'worksheet_post' );
+	}
+	return null;
+}
+
+/**
+ * Normalised worksheet data. With $with_lesson the linked lesson card is included.
+ */
+function mwm_worksheet_data( $post, bool $with_lesson = true ): ?array {
+	$post = get_post( $post );
+	if ( ! $post || $post->post_type !== 'mwm_worksheet' ) {
+		return null;
+	}
+	$id        = $post->ID;
+	$pdf       = mwm_attachment_info( get_post_meta( $id, 'pdf', true ) );
+	$answers   = mwm_attachment_info( get_post_meta( $id, 'answers', true ) );
+	$lesson_id = (int) get_post_meta( $id, 'lesson', true );
+	$level     = mwm_get_term_slug( $id, 'mwm_level' );
+	$tt        = mwm_lesson_topic_terms( $id );
+	$thumb     = has_post_thumbnail( $id ) ? ( get_the_post_thumbnail_url( $id, 'large' ) ?: '' ) : '';
+	$lesson    = null;
+	if ( $with_lesson && $lesson_id ) {
+		$lesson = mwm_lesson_card( $lesson_id );
+		if ( $lesson && ! $thumb ) {
+			$thumb = $lesson['thumb'];
+		}
+	} elseif ( $lesson_id && ! $thumb ) {
+		$thumb = (string) get_post_meta( $lesson_id, 'thumbnail_url', true );
+		if ( has_post_thumbnail( $lesson_id ) ) {
+			$thumb = get_the_post_thumbnail_url( $lesson_id, 'large' ) ?: $thumb;
+		}
+	}
+	return [
+		'id'            => $id,
+		'title'         => mwm_title( $id ),
+		'url'           => get_permalink( $id ),
+		'slug'          => $post->post_name,
+		'pdf'           => $pdf,
+		'answers'       => $answers,
+		'has_pdf'       => (bool) $pdf,
+		'has_answers'   => (bool) $answers,
+		'lesson_id'     => $lesson_id,
+		'lesson'        => $lesson,
+		'level'         => $level ? mwm_level_name( $level ) : '',
+		'level_slug'    => $level,
+		'level_style'   => $level === 'gcse-higher' ? 'higher' : 'tint',
+		'topic'         => $tt['topic'] ? wp_specialchars_decode( $tt['topic']->name ) : '',
+		'topic_slug'    => $tt['topic'] ? $tt['topic']->slug : '',
+		'subtopic'      => $tt['subtopic'] ? wp_specialchars_decode( $tt['subtopic']->name ) : '',
+		'subtopic_slug' => $tt['subtopic'] ? $tt['subtopic']->slug : '',
+		'thumb'         => $thumb,
+		'excerpt'       => wp_strip_all_tags( get_post_field( 'post_content', $id ) ),
+		'published'     => get_the_date( 'Y-m-d', $id ),
+		'published_label' => mwm_format_date( get_the_date( 'Y-m-d', $id ), 'short' ),
+	];
+}
+
+/**
+ * Query worksheets (level/topic/subtopic/search) as data arrays.
+ */
+function mwm_query_worksheets( array $args = [] ): array {
+	$a   = array_merge( [ 'level' => '', 'topic' => '', 'subtopic' => '', 'search' => '', 'per_page' => -1, 'exclude' => [], 'include' => [] ], $args );
+	$tax = [];
+	if ( $a['level'] ) {
+		$tax[] = [ 'taxonomy' => 'mwm_level', 'field' => 'slug', 'terms' => (array) $a['level'] ];
+	}
+	if ( $a['subtopic'] ) {
+		$tax[] = [ 'taxonomy' => 'mwm_topic', 'field' => 'slug', 'terms' => (array) $a['subtopic'], 'include_children' => false ];
+	} elseif ( $a['topic'] ) {
+		$tax[] = [ 'taxonomy' => 'mwm_topic', 'field' => 'slug', 'terms' => (array) $a['topic'], 'include_children' => true ];
+	}
+	$q = [ 'post_type' => 'mwm_worksheet', 'post_status' => 'publish', 'posts_per_page' => $a['per_page'], 'no_found_rows' => true, 'post__not_in' => (array) $a['exclude'] ];
+	if ( $a['include'] ) {
+		$q['post__in'] = (array) $a['include'];
+		$q['orderby']  = 'post__in';
+	}
+	if ( $tax ) {
+		$q['tax_query'] = array_merge( [ 'relation' => 'AND' ], $tax );
+	}
+	if ( $a['search'] ) {
+		$q['s'] = $a['search'];
+	}
+	$out = [];
+	foreach ( get_posts( $q ) as $p ) {
+		$d = mwm_worksheet_data( $p, false );
+		if ( $d ) {
+			$out[] = $d;
+		}
+	}
+	return $out;
+}
+
+/**
+ * Create or update the worksheet post for a lesson from its PDFs. Pass 0 for $pdf_id to detach/unpublish.
+ *
+ * @return int Worksheet post ID (0 when removed).
+ */
+function mwm_upsert_worksheet( int $lesson_id, int $pdf_id, int $answers_id = 0, string $title = '' ): int {
+	$existing = mwm_lesson_worksheet( $lesson_id );
+	if ( ! $pdf_id ) {
+		if ( $existing ) {
+			wp_trash_post( $existing->ID );
+			delete_post_meta( $lesson_id, 'worksheet_post' );
+		}
+		return 0;
+	}
+	$title = $title ?: ( $lesson_id ? mwm_title( $lesson_id ) : get_the_title( $pdf_id ) );
+	if ( $existing ) {
+		$ws_id = $existing->ID;
+		if ( $title && get_post_field( 'post_title', $ws_id ) !== $title ) {
+			wp_update_post( [ 'ID' => $ws_id, 'post_title' => $title ] );
+		}
+	} else {
+		$ws_id = (int) wp_insert_post( [
+			'post_type'   => 'mwm_worksheet',
+			'post_status' => 'publish',
+			'post_title'  => $title ?: 'Worksheet',
+			'post_name'   => sanitize_title( $title ) . '-worksheet',
+			'post_date'   => $lesson_id ? get_post_field( 'post_date', $lesson_id ) : current_time( 'mysql' ),
+		] );
+		if ( ! $ws_id ) {
+			return 0;
+		}
+	}
+	update_post_meta( $ws_id, 'pdf', $pdf_id );
+	wp_update_post( [ 'ID' => $pdf_id, 'post_parent' => $ws_id ] );
+	if ( $answers_id ) {
+		update_post_meta( $ws_id, 'answers', $answers_id );
+		wp_update_post( [ 'ID' => $answers_id, 'post_parent' => $ws_id ] );
+	} else {
+		delete_post_meta( $ws_id, 'answers' );
+	}
+	if ( $lesson_id ) {
+		update_post_meta( $ws_id, 'lesson', $lesson_id );
+		update_post_meta( $lesson_id, 'worksheet_post', $ws_id );
+		foreach ( [ 'mwm_level', 'mwm_topic' ] as $tax ) {
+			$terms = wp_get_object_terms( $lesson_id, $tax, [ 'fields' => 'ids' ] );
+			if ( $terms && ! is_wp_error( $terms ) ) {
+				wp_set_object_terms( $ws_id, $terms, $tax );
+			}
+		}
+	}
+	return $ws_id;
+}
+
 function mwm_attachment_info( $attachment ): ?array {
 	$id = is_array( $attachment ) ? ( $attachment['ID'] ?? 0 ) : (int) $attachment;
 	if ( ! $id || get_post_type( $id ) !== 'attachment' ) {
@@ -369,8 +543,10 @@ function mwm_lesson_card( $post ): ?array {
 	}
 	$level_slug = mwm_get_term_slug( $id, 'mwm_level' );
 	$tt         = mwm_lesson_topic_terms( $id );
-	$worksheet  = mwm_attachment_info( get_post_meta( $id, 'worksheet', true ) );
-	$answers    = mwm_attachment_info( get_post_meta( $id, 'answers', true ) );
+	$ws_post    = mwm_lesson_worksheet( $id );
+	$ws_data    = $ws_post ? mwm_worksheet_data( $ws_post, false ) : null;
+	$worksheet  = $ws_data ? $ws_data['pdf'] : null;
+	$answers    = $ws_data ? $ws_data['answers'] : null;
 	$quiz       = mwm_lesson_quiz( $id );
 	$theme_slug = mwm_get_term_slug( $id, 'mwm_theme' );
 
@@ -398,6 +574,9 @@ function mwm_lesson_card( $post ): ?array {
 		'seconds'         => $seconds,
 		'duration'        => mwm_duration_label( $seconds, $format ),
 		'worksheet'       => $worksheet,
+		'worksheet_id'    => $ws_data ? $ws_data['id'] : 0,
+		'worksheet_url'   => $ws_data ? $ws_data['url'] : '',
+		'worksheet_title' => $ws_data ? $ws_data['title'] : '',
 		'answers'         => $answers,
 		'has_worksheet'   => (bool) $worksheet,
 		'has_answers'     => (bool) $answers,
@@ -455,7 +634,7 @@ function mwm_query_lessons( array $args = [] ): array {
 		$q['s'] = $a['search'];
 	}
 	if ( $a['worksheet'] ) {
-		$q['meta_query'][] = [ 'key' => 'worksheet', 'value' => '0', 'compare' => '>', 'type' => 'NUMERIC' ];
+		$q['meta_query'][] = [ 'key' => 'worksheet_post', 'value' => '0', 'compare' => '>', 'type' => 'NUMERIC' ];
 	}
 	$posts = get_posts( $q );
 	$cards = [];
@@ -658,9 +837,9 @@ function mwm_past_paper_data( $post ): ?array {
 	$ws_ids = (array) get_post_meta( $id, 'worksheets', true );
 	$worksheets = [];
 	foreach ( $ws_ids as $wid ) {
-		$c = mwm_lesson_card( (int) $wid );
-		if ( $c ) {
-			$worksheets[] = [ 'id' => $c['id'], 'name' => $c['title'], 'url' => $c['url'] ];
+		$w = mwm_worksheet_data( (int) $wid, false );
+		if ( $w ) {
+			$worksheets[] = [ 'id' => $w['id'], 'name' => $w['title'], 'url' => $w['url'] ];
 		}
 	}
 	$h     = intdiv( $mins, 60 );
@@ -714,6 +893,9 @@ function mwm_user_prefs(): array {
  * Pages created by the activator, by key.
  */
 function mwm_page_url( string $key ): string {
+	if ( $key === 'worksheets' ) {
+		return (string) ( get_post_type_archive_link( 'mwm_worksheet' ) ?: home_url( '/worksheets/' ) );
+	}
 	$ids = (array) get_option( 'mwm_pages', [] );
 	if ( ! empty( $ids[ $key ] ) && get_post_status( $ids[ $key ] ) === 'publish' ) {
 		return get_permalink( (int) $ids[ $key ] );

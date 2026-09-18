@@ -20,7 +20,7 @@ class MWM_Fields {
 	}
 
 	public static function worksheet_query( array $args ): array {
-		$args['meta_query'] = [ [ 'key' => 'worksheet', 'value' => '0', 'compare' => '>', 'type' => 'NUMERIC' ] ];
+		$args['post_status'] = [ 'publish' ];
 		return $args;
 	}
 
@@ -105,24 +105,14 @@ class MWM_Fields {
 				self::tax_field( 'field_mwm_lesson_format', 'format', 'Format', 'mwm_format', 'radio', 'Lessons are added by hand. Shorts and gaming videos come from the YouTube playlists.', true ),
 				self::tax_field( 'field_mwm_lesson_theme', 'game_theme', 'Game theme', 'mwm_theme', 'radio', 'Only for Gaming & Story videos.' ),
 				[
-					'key'           => 'field_mwm_lesson_worksheet',
-					'label'         => 'Worksheet PDF',
-					'name'          => 'worksheet',
-					'type'          => 'file',
+					'key'           => 'field_mwm_lesson_worksheet_post',
+					'label'         => 'Worksheet',
+					'name'          => 'worksheet_post',
+					'type'          => 'post_object',
+					'post_type'     => [ 'mwm_worksheet' ],
 					'return_format' => 'id',
-					'library'       => 'all',
-					'mime_types'    => 'pdf',
-					'instructions'  => 'Optional. Without one, the lesson page says “No worksheet for this lesson yet.”',
-				],
-				[
-					'key'           => 'field_mwm_lesson_answers',
-					'label'         => 'Worked answers PDF',
-					'name'          => 'answers',
-					'type'          => 'file',
-					'return_format' => 'id',
-					'library'       => 'all',
-					'mime_types'    => 'pdf',
-					'instructions'  => 'Optional. Appears behind “Reveal answers”.',
+					'allow_null'    => 1,
+					'instructions'  => 'The worksheet page for this lesson (holds the PDF and worked answers). Without one, the lesson page says “No worksheet for this lesson yet.”',
 				],
 				[
 					'key'          => 'field_mwm_lesson_source_id',
@@ -146,6 +136,75 @@ class MWM_Fields {
 				],
 			],
 			'location' => [ [ [ 'param' => 'post_type', 'operator' => '==', 'value' => 'mwm_lesson' ] ] ],
+			'position' => 'acf_after_title',
+		] );
+
+		/* ---------------------------------------------------------------
+		 * Worksheet
+		 * ------------------------------------------------------------ */
+		acf_add_local_field_group( [
+			'key'      => 'group_mwm_worksheet',
+			'title'    => 'Worksheet',
+			'fields'   => [
+				[
+					'key'           => 'field_mwm_ws_pdf',
+					'label'         => 'Worksheet PDF',
+					'name'          => 'pdf',
+					'type'          => 'file',
+					'return_format' => 'id',
+					'library'       => 'all',
+					'mime_types'    => 'pdf',
+					'required'      => 1,
+					'instructions'  => 'Shown on the worksheet page and offered for download.',
+				],
+				[
+					'key'           => 'field_mwm_ws_answers',
+					'label'         => 'Worked answers PDF',
+					'name'          => 'answers',
+					'type'          => 'file',
+					'return_format' => 'id',
+					'library'       => 'all',
+					'mime_types'    => 'pdf',
+					'instructions'  => 'Optional. Appears behind “Reveal answers”.',
+				],
+				[
+					'key'           => 'field_mwm_ws_lesson',
+					'label'         => 'Lesson',
+					'name'          => 'lesson',
+					'type'          => 'post_object',
+					'post_type'     => [ 'mwm_lesson' ],
+					'return_format' => 'id',
+					'allow_null'    => 1,
+					'instructions'  => 'The lesson this worksheet practises. Level and topic are copied from it if left blank.',
+				],
+				self::tax_field( 'field_mwm_ws_level', 'level', 'Level', 'mwm_level', 'radio' ),
+				[
+					'key'           => 'field_mwm_ws_topic',
+					'label'         => 'Topic',
+					'name'          => 'topic',
+					'type'          => 'taxonomy',
+					'taxonomy'      => 'mwm_topic',
+					'field_type'    => 'select',
+					'add_term'      => false,
+					'save_terms'    => true,
+					'load_terms'    => true,
+					'return_format' => 'id',
+					'allow_null'    => 1,
+				],
+				[
+					'key'   => 'field_mwm_ws_source_id',
+					'label' => 'Old site post ID',
+					'name'  => 'source_id',
+					'type'  => 'number',
+				],
+				[
+					'key'   => 'field_mwm_ws_source_url',
+					'label' => 'Old site URL',
+					'name'  => 'source_url',
+					'type'  => 'url',
+				],
+			],
+			'location' => [ [ [ 'param' => 'post_type', 'operator' => '==', 'value' => 'mwm_worksheet' ] ] ],
 			'position' => 'acf_after_title',
 		] );
 
@@ -287,10 +346,10 @@ class MWM_Fields {
 					'label'         => 'Practise what came up',
 					'name'          => 'worksheets',
 					'type'          => 'relationship',
-					'post_type'     => [ 'mwm_lesson' ],
+					'post_type'     => [ 'mwm_worksheet' ],
 					'return_format' => 'id',
 					'filters'       => [ 'search', 'taxonomy' ],
-					'instructions'  => 'Lessons with worksheets that match what came up in this paper.',
+					'instructions'  => 'Worksheets that match what came up in this paper.',
 				],
 			],
 			'location' => [ [ [ 'param' => 'post_type', 'operator' => '==', 'value' => 'mwm_past_paper' ] ] ],

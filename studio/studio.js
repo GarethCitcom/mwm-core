@@ -124,7 +124,7 @@
 		}
 		if (L.step === 3) {
 			html += '<div class="st-panel"><h2>Add the practice bits (optional)</h2><p class="st-panel__sub">Skip anything that isn’t ready — the site never shows an empty button, just a friendly “not yet” note.</p>' +
-				fileRow('Worksheet PDF', L.ws ? '✓ ' + L.ws.filename + ' added' : 'No worksheet yet — students will see a friendly note instead of a button.', !!L.ws, 'ws', 'st-filerow--first') +
+				fileRow('Worksheet PDF', L.ws ? '✓ ' + L.ws.filename + ' added — it gets its own worksheet page too' : 'No worksheet yet — students will see a friendly note instead of a button.', !!L.ws, 'ws', 'st-filerow--first') +
 				fileRow('Worked answers PDF', L.ans ? '✓ ' + L.ans.filename + ' added' : 'Optional — appears behind “Reveal answers”.', !!L.ans, 'ans', '') +
 				'<div class="st-quiz"><div class="st-filerow__label">Quiz <span>(optional)</span></div><div class="st-quiz__sub">Ask ChatGPT to write one for you: copy the instructions below, swap in your topic, then paste back what it gives you.</div>' +
 				'<div class="st-prompt"><div class="st-prompt__head"><span class="st-prompt__title">Instructions for ChatGPT</span><button type="button" class="st-copy" data-copy>' + (L.copied ? '✓ Copied' : 'Copy') + '</button></div><div class="st-prompt__text">' + esc(B.prompt) + '</div></div>' +
@@ -172,8 +172,8 @@
 	}
 
 	function viewContent() {
-		var kinds = ['All', 'Lessons', 'Past papers', 'Exam dates', 'Quizzes'];
-		var map = { 'Lessons': 'Lesson', 'Past papers': 'Past paper', 'Exam dates': 'Exam date', 'Quizzes': 'Quiz' };
+		var kinds = ['All', 'Lessons', 'Worksheets', 'Past papers', 'Exam dates', 'Quizzes'];
+		var map = { 'Lessons': 'Lesson', 'Worksheets': 'Worksheet', 'Past papers': 'Past paper', 'Exam dates': 'Exam date', 'Quizzes': 'Quiz' };
 		var rows = S.content.filter(function (it) { return S.kindFilter === 'All' || map[S.kindFilter] === it.kind; });
 		return '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>' +
 			'<h1 class="st-h1 st-h1--after-back">Your content</h1>' +
@@ -299,8 +299,12 @@
 	function editItem(id) {
 		var it = S.content.filter(function (r) { return r.id === id; })[0];
 		if (!it) { return; }
-		if (it.kind === 'Lesson' || it.kind === 'Quiz') {
-			var lessonId = it.kind === 'Quiz' ? it.lesson_id : it.id;
+		if (it.kind === 'Worksheet' && !it.lesson_id) {
+			window.location.href = B.site + 'wp-admin/post.php?post=' + it.id + '&action=edit';
+			return;
+		}
+		if (it.kind === 'Lesson' || it.kind === 'Quiz' || it.kind === 'Worksheet') {
+			var lessonId = it.kind === 'Lesson' ? it.id : it.lesson_id;
 			root.classList.add('st-busy');
 			api('studio/lessons/' + lessonId).then(function (c) {
 				root.classList.remove('st-busy');
@@ -311,7 +315,7 @@
 				L.ws = c.worksheet ? { id: c.worksheet.id, filename: c.worksheet.name, url: c.worksheet.url } : null;
 				L.ans = c.answers ? { id: c.answers.id, filename: c.answers.name, url: c.answers.url } : null;
 				L.quizText = c.quiz_json || '';
-				L.step = it.kind === 'Quiz' ? 3 : 2;
+				L.step = it.kind === 'Lesson' ? 2 : 3;
 				S.lesson = L;
 				go('lesson');
 				if (L.quizText) { checkQuiz(L.quizText); }

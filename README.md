@@ -9,6 +9,7 @@ Requires **Advanced Custom Fields Pro** (field groups are registered in PHP, not
 | Post type        | Slug              | What it is                                                                 |
 |------------------|-------------------|-----------------------------------------------------------------------------|
 | `mwm_lesson`     | `/lesson/{slug}/` | A video. `format` taxonomy says whether it is a **lesson**, a **short** (Quick Maths) or a **gaming** video. |
+| `mwm_worksheet`  | `/worksheets/{slug}/`, listed at `/worksheets/` | Worksheet PDF (`pdf`), optional worked answers (`answers`), the lesson it goes with (`lesson`), level and topic. Lessons point back via `worksheet_post`. |
 | `mwm_quiz`       | `/quiz/{slug}/`   | Quiz JSON attached to a lesson (`lesson` field).                            |
 | `mwm_past_paper` | listed on `/revision/past-papers/` | Board, tier, series, paper number, question paper + mark scheme PDFs, matching worksheets. |
 | `mwm_exam_date`  | (no page)         | Board, level, paper label, date, session, verified flag. Feeds exam panels and the calendar. |
@@ -50,6 +51,8 @@ Public: `lessons`, `topics`, `pathway`, `exam-dates`, `quiz/{id}`. Signed-in: `m
 wp mwm seed-demo [--remove]                                  # prototype sample content
 wp mwm import-lessons --source=https://old-site [--post-type=lesson] [--dry-run] [--update] [--no-media] [--limit=N]
 wp mwm import-lessons --file=export.xml|lessons.json
+wp mwm import-worksheets [--source=…] [--dry-run]              # old worksheet pages → titles, slugs, standalone worksheets, redirects
+wp mwm migrate-worksheets [--dry-run]                          # one-off: PDFs stored on lessons → worksheet posts
 wp mwm redirect-map [--format=option|nginx|apache|csv|json]
 wp mwm sync
 ```

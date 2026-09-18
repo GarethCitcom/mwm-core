@@ -68,6 +68,97 @@ class MWM_Importer {
 	}
 
 	/* ---------------------------------------------------------------
+	 * Worksheets (old CPT → our worksheet posts, matched by PDF URL)
+	 * ------------------------------------------------------------ */
+
+	public function run_worksheets(): void {
+		$base = rtrim( (string) $this->opts['source'], '/' );
+		$rows = [];
+		$page = 1;
+		do {
+			$res = wp_remote_get( "$base/wp-json/wp/v2/worksheet?per_page=100&page=$page&_embed=1&status=publish", [ 'timeout' => 60 ] );
+			if ( is_wp_error( $res ) ) {
+				WP_CLI::error( 'Could not reach the old site: ' . $res->get_error_message() );
+			}
+			$code = wp_remote_retrieve_response_code( $res );
+			if ( $code === 400 && $page > 1 ) {
+				break;
+			}
+			if ( $code !== 200 ) {
+				WP_CLI::error( "The old site replied with HTTP $code." );
+			}
+			$items = json_decode( wp_remote_retrieve_body( $res ), true );
+			if ( ! is_array( $items ) || ! $items ) {
+				break;
+			}
+			foreach ( $items as $it ) {
+				$topics = [];
+				foreach ( (array) ( $it['_embedded']['wp:term'] ?? [] ) as $g ) {
+					foreach ( (array) $g as $t ) {
+						$topics[] = html_entity_decode( (string) ( $t['name'] ?? '' ) );
+					}
+				}
+				$rows[] = [ 'id' => (int) $it['id'], 'title' => html_entity_decode( (string) $it['title']['rendered'] ), 'slug' => (string) $it['slug'], 'url' => (string) $it['link'], 'topic' => implode( '|', array_unique( $topics ) ), 'date' => (string) ( $it['date'] ?? '' ) ];
+			}
+			$total_pages = (int) wp_remote_retrieve_header( $res, 'x-wp-totalpages' );
+			$page++;
+		} while ( $page <= max( 1, $total_pages ) );
+		WP_CLI::log( sprintf( 'Found %d worksheet pages on the old site.', count( $rows ) ) );
+
+		$matched = 0;
+		$created = 0;
+		$missing = 0;
+		foreach ( $rows as $r ) {
+			// The PDF link is only in the page HTML.
+			$html = wp_remote_retrieve_body( wp_remote_get( $r['url'], [ 'timeout' => 45 ] ) );
+			if ( preg_match( '~<main[^>]*>(.*)</main>~is', $html, $m ) ) {
+				$html = $m[1];
+			}
+			$pdfs = $this->find_pdfs( $html, [] );
+			$pdf  = $pdfs['worksheet'] ?: $pdfs['answers'];
+			$att  = $pdf ? get_posts( [ 'post_type' => 'attachment', 'post_status' => 'any', 'fields' => 'ids', 'posts_per_page' => 1, 'meta_key' => '_mwm_source_url', 'meta_value' => $pdf, 'no_found_rows' => true ] ) : [];
+			$ws   = 0;
+			if ( $att ) {
+				$found = get_posts( [ 'post_type' => 'mwm_worksheet', 'post_status' => 'any', 'fields' => 'ids', 'posts_per_page' => 1, 'meta_key' => 'pdf', 'meta_value' => (int) $att[0], 'no_found_rows' => true ] );
+				$ws = $found ? (int) $found[0] : 0;
+			}
+			if ( $this->dry ) {
+				WP_CLI::log( sprintf( '  %s #%d %s → %s', $ws ? 'match ' : ( $pdf ? 'new   ' : 'no-pdf' ), $r['id'], $r['title'], $ws ? "worksheet #$ws" : ( $pdf ? basename( $pdf ) : '—' ) ) );
+				continue;
+			}
+			if ( ! $ws ) {
+				if ( ! $pdf ) {
+					$missing++;
+					WP_CLI::warning( "  no PDF found for {$r['url']}" );
+					continue;
+				}
+				$att_id = $att ? (int) $att[0] : $this->sideload_pdf( $pdf, 0, $r['title'] );
+				if ( ! $att_id ) {
+					$missing++;
+					continue;
+				}
+				$ws = mwm_upsert_worksheet( 0, $att_id, 0, $r['title'] );
+				$created++;
+			} else {
+				$matched++;
+			}
+			// Old title, slug and topic win: they are what students and search engines know.
+			wp_update_post( [ 'ID' => $ws, 'post_title' => $r['title'], 'post_name' => $r['slug'], 'post_date' => $r['date'] ?: get_post_field( 'post_date', $ws ) ] );
+			update_post_meta( $ws, 'source_id', $r['id'] );
+			update_post_meta( $ws, 'source_url', $r['url'] );
+			if ( $r['topic'] && ! has_term( '', 'mwm_topic', $ws ) ) {
+				$topic = $this->map_topic( $r['topic'], $r['title'] );
+				if ( $topic ) {
+					wp_set_object_terms( $ws, $this->ensure_subtopic( $topic, $r['topic'] ), 'mwm_topic' );
+				}
+			}
+			WP_CLI::log( sprintf( '  #%d → worksheet #%d /worksheets/%s/', $r['id'], $ws, $r['slug'] ) );
+		}
+		update_option( 'mwm_redirect_map', MWM_Redirects::build_map() );
+		WP_CLI::success( sprintf( 'Matched %d, created %d, no PDF %d. Redirect map saved.', $matched, $created, $missing ) );
+	}
+
+	/* ---------------------------------------------------------------
 	 * Readers
 	 * ------------------------------------------------------------ */
 
@@ -492,14 +583,18 @@ class MWM_Importer {
 			wp_set_object_terms( $id, $topic, 'mwm_topic' );
 		}
 		if ( ! isset( $this->opts['no-media'] ) ) {
+			$atts = [];
 			foreach ( [ 'worksheet', 'answers' ] as $k ) {
 				if ( $r[ $k ] ) {
 					$att = $this->sideload_pdf( $r[ $k ], $id, $r['title'] . ( $k === 'answers' ? ' — worked answers' : ' — worksheet' ) );
 					if ( $att ) {
-						update_post_meta( $id, $k, $att );
+						$atts[ $k ] = $att;
 						$this->stats['pdfs']++;
 					}
 				}
+			}
+			if ( ! empty( $atts['worksheet'] ) ) {
+				mwm_upsert_worksheet( $id, $atts['worksheet'], $atts['answers'] ?? 0, $r['title'] );
 			}
 		}
 		WP_CLI::log( sprintf( '  %s #%d → #%d %s%s%s%s', $existing ? 'update' : 'create', $r['id'], $id, $r['title'], $r['youtube'] ? '' : ' [no YouTube ID]', $level ? '' : ' [no level]', $topic ? '' : ' [no topic]' ) );

@@ -12,12 +12,13 @@ class MWM_Post_Types {
 		add_filter( 'wp_insert_post_data', [ __CLASS__, 'auto_titles' ], 10, 2 );
 		add_action( 'save_post_mwm_lesson', [ __CLASS__, 'on_save_lesson' ], 20, 2 );
 		add_action( 'save_post_mwm_quiz', [ __CLASS__, 'on_save_quiz' ], 20, 2 );
+		add_action( 'save_post_mwm_worksheet', [ __CLASS__, 'on_save_worksheet' ], 20, 2 );
 		add_action( 'template_redirect', [ __CLASS__, 'redirect_single_past_paper' ] );
 	}
 
 	public static function register(): void {
 		/* ---- Taxonomies ---- */
-		register_taxonomy( 'mwm_level', [ 'mwm_lesson', 'mwm_exam_date', 'mwm_pathway' ], [
+		register_taxonomy( 'mwm_level', [ 'mwm_lesson', 'mwm_worksheet', 'mwm_exam_date', 'mwm_pathway' ], [
 			'labels'            => self::labels( 'Level', 'Levels' ),
 			'public'            => true,
 			'hierarchical'      => false,
@@ -27,7 +28,7 @@ class MWM_Post_Types {
 			'meta_box_cb'       => false,
 		] );
 
-		register_taxonomy( 'mwm_topic', [ 'mwm_lesson' ], [
+		register_taxonomy( 'mwm_topic', [ 'mwm_lesson', 'mwm_worksheet' ], [
 			'labels'            => self::labels( 'Topic', 'Topics' ),
 			'public'            => true,
 			'hierarchical'      => true,
@@ -81,6 +82,18 @@ class MWM_Post_Types {
 			'rewrite'      => [ 'slug' => 'lesson', 'with_front' => false ],
 			'taxonomies'   => [ 'mwm_level', 'mwm_topic', 'mwm_format', 'mwm_theme' ],
 			'template'     => [],
+		] );
+
+		register_post_type( 'mwm_worksheet', [
+			'labels'       => self::labels( 'Worksheet', 'Worksheets' ),
+			'public'       => true,
+			'show_in_rest' => true,
+			'menu_icon'    => 'dashicons-media-text',
+			'menu_position'=> 21,
+			'supports'     => [ 'title', 'editor', 'thumbnail', 'custom-fields', 'revisions' ],
+			'has_archive'  => 'worksheets',
+			'rewrite'      => [ 'slug' => 'worksheets', 'with_front' => false ],
+			'taxonomies'   => [ 'mwm_level', 'mwm_topic' ],
 		] );
 
 		register_post_type( 'mwm_quiz', [
@@ -190,6 +203,35 @@ class MWM_Post_Types {
 		$lesson = (int) get_post_meta( $post_id, 'lesson', true );
 		if ( $lesson ) {
 			delete_post_meta( $lesson, '_mwm_quiz_id' );
+		}
+	}
+
+	/**
+	 * Keep the lesson ↔ worksheet link in sync from the worksheet side (edits in wp-admin).
+	 */
+	public static function on_save_worksheet( int $post_id, WP_Post $post ): void {
+		if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
+			return;
+		}
+		$lesson = (int) get_post_meta( $post_id, 'lesson', true );
+		// Detach from any lesson that used to point here but no longer should.
+		$stale = get_posts( [ 'post_type' => 'mwm_lesson', 'post_status' => 'any', 'fields' => 'ids', 'posts_per_page' => -1, 'no_found_rows' => true, 'meta_key' => 'worksheet_post', 'meta_value' => $post_id ] );
+		foreach ( $stale as $sid ) {
+			if ( (int) $sid !== $lesson ) {
+				delete_post_meta( (int) $sid, 'worksheet_post' );
+			}
+		}
+		if ( $lesson && $post->post_status === 'publish' ) {
+			update_post_meta( $lesson, 'worksheet_post', $post_id );
+			// Inherit level and topic from the lesson when the worksheet has none.
+			foreach ( [ 'mwm_level', 'mwm_topic' ] as $tax ) {
+				if ( ! has_term( '', $tax, $post_id ) ) {
+					$terms = wp_get_object_terms( $lesson, $tax, [ 'fields' => 'ids' ] );
+					if ( $terms && ! is_wp_error( $terms ) ) {
+						wp_set_object_terms( $post_id, $terms, $tax );
+					}
+				}
+			}
 		}
 	}
 
