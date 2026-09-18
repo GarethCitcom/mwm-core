@@ -805,3 +805,118 @@
 	z-index: 100;
 	box-shadow: 0 12px 28px -8px var(--shadow);
 }
+
+/* Subtopic picker: searchable select with "create new" */
+.st-note--8 {
+	margin-top: 8px;
+}
+.st-picker {
+	position: relative;
+	margin-top: 8px;
+	max-width: 520px;
+}
+.st-picker__control {
+	position: relative;
+}
+.st-picker__input {
+	width: 100%;
+	min-width: 0;
+	padding-right: 44px;
+}
+.st-picker.is-open .st-picker__input {
+	border-color: var(--link);
+	box-shadow: 0 0 0 3px var(--tint);
+}
+.st-picker__caret,
+.st-picker__clear {
+	position: absolute;
+	right: 6px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 36px;
+	height: 36px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--muted);
+	pointer-events: none;
+}
+.st-picker__clear {
+	pointer-events: auto;
+	border: 0;
+	background: transparent;
+	border-radius: 8px;
+	font-size: 14px;
+	cursor: pointer;
+}
+.st-picker__clear:hover {
+	background: var(--tint);
+	color: var(--link);
+}
+.st-picker__list {
+	position: absolute;
+	z-index: 20;
+	left: 0;
+	right: 0;
+	top: calc(100% + 6px);
+	max-height: 280px;
+	overflow-y: auto;
+	padding: 6px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--card);
+	box-shadow: 0 12px 32px rgba(23, 23, 23, 0.12);
+}
+.st-picker__opt {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 10px 12px;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	text-align: left;
+	font: inherit;
+	font-size: 15px;
+	color: var(--ink);
+	cursor: pointer;
+}
+.st-picker__opt:hover,
+.st-picker__opt:focus-visible {
+	background: var(--tint);
+	outline: none;
+}
+.st-picker__opt.is-on {
+	color: var(--link);
+	font-weight: 600;
+}
+.st-picker__opt--new {
+	color: var(--link);
+	font-weight: 600;
+	border-top: 1px solid var(--border);
+	border-radius: 0 0 8px 8px;
+	margin-top: 4px;
+	padding-top: 12px;
+}
+.st-picker__plus {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	background: var(--link);
+	color: #fff;
+	font-size: 15px;
+	line-height: 1;
+}
+.st-picker__empty {
+	padding: 10px 12px;
+	font-size: 14px;
+	color: var(--muted);
+}
+.st-picker.is-busy {
+	opacity: 0.6;
+	pointer-events: none;
+}

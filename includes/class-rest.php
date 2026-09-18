@@ -46,6 +46,7 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/lessons/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_lesson' ] ] ) );
 		register_rest_route( $ns, '/studio/worksheets', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_worksheet' ] ] ) );
 		register_rest_route( $ns, '/studio/worksheets/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_worksheet' ] ] ) );
+		register_rest_route( $ns, '/studio/subtopics', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_create_subtopic' ] ] ) );
 		register_rest_route( $ns, '/studio/upload', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_upload' ] ] ) );
 		register_rest_route( $ns, '/studio/quiz/validate', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_validate_quiz' ] ] ) );
 		register_rest_route( $ns, '/studio/past-papers', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_past_paper' ] ] ) );
@@ -234,6 +235,42 @@ class MWM_REST {
 		$card['status']    = get_post_status( $id );
 		$card['content']   = get_post_field( 'post_content', $id );
 		return rest_ensure_response( $card );
+	}
+
+	/**
+	 * Create a subtopic under a topic from the Studio (or return the existing one with that name).
+	 */
+	public static function studio_create_subtopic( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$p      = (array) $r->get_json_params();
+		$topic  = sanitize_title( (string) ( $p['topic'] ?? '' ) );
+		$name   = trim( sanitize_text_field( (string) ( $p['name'] ?? '' ) ) );
+		$parent = $topic ? get_term_by( 'slug', $topic, 'mwm_topic' ) : null;
+		if ( ! $parent || (int) $parent->parent !== 0 ) {
+			return new WP_Error( 'bad_topic', 'Pick a topic first.', [ 'status' => 400 ] );
+		}
+		if ( $name === '' || mb_strlen( $name ) > 80 ) {
+			return new WP_Error( 'bad_name', 'Give the subtopic a short name.', [ 'status' => 400 ] );
+		}
+		$term_id = 0;
+		foreach ( mwm_subtopics( (int) $parent->term_id ) as $s ) {
+			if ( mb_strtolower( $s['name'] ) === mb_strtolower( $name ) ) {
+				$term_id = $s['id'];
+			}
+		}
+		if ( ! $term_id ) {
+			$args = [ 'parent' => (int) $parent->term_id ];
+			if ( term_exists( sanitize_title( $name ), 'mwm_topic' ) ) {
+				$args['slug'] = $parent->slug . '-' . sanitize_title( $name ); // Same name lives under another topic.
+			}
+			$ins = wp_insert_term( $name, 'mwm_topic', $args );
+			if ( is_wp_error( $ins ) ) {
+				return new WP_Error( 'insert_failed', $ins->get_error_message(), [ 'status' => 400 ] );
+			}
+			$term_id = (int) $ins['term_id'];
+			update_term_meta( $term_id, 'order', 0 );
+		}
+		$term = get_term( $term_id, 'mwm_topic' );
+		return rest_ensure_response( [ 'id' => $term_id, 'slug' => $term->slug, 'name' => wp_specialchars_decode( $term->name ), 'order' => 0, 'topic' => $parent->slug ] );
 	}
 
 	/**

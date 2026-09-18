@@ -28,6 +28,45 @@
 		return '<button type="button" class="mwm-chip mwm-chip--md' + (on ? ' is-on' : '') + (cls ? ' ' + cls : '') + '" aria-pressed="' + (on ? 'true' : 'false') + '"' + d + '>' + esc(label) + '</button>';
 	}
 	function tag(text, cls) { return '<span class="mwm-tag ' + cls + '">' + esc(text) + '</span>'; }
+	/* Searchable subtopic picker: type to filter, pick one, or create a new one under the chosen topic. */
+	function picker(key, topic, value) {
+		var sel = topic ? topic.subtopics.filter(function (s) { return s.slug === value; })[0] : null;
+		return '<div class="st-picker" data-picker="' + key + '" data-picker-topic="' + esc(topic ? topic.slug : '') + '" data-picker-selected="' + esc(sel ? sel.name : '') + '">' +
+			'<div class="st-picker__control">' +
+			'<input type="text" class="st-input st-picker__input" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-label="Subtopic" placeholder="' + (topic && topic.subtopics.length ? 'Search subtopics, or type a new one…' : 'No subtopics yet — type one to create it') + '" value="' + esc(sel ? sel.name : '') + '" autocomplete="off" data-picker-input>' +
+			(sel ? '<button type="button" class="st-picker__clear" aria-label="Clear subtopic" data-picker-clear>✕</button>' : '<span class="st-picker__caret" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5l4 4 4-4"/></svg></span>') +
+			'</div><div class="st-picker__list" role="listbox" hidden data-picker-list></div></div>';
+	}
+	function pickerOptions(topic, q, selected) {
+		var ql = q.trim().toLowerCase();
+		var items = topic ? topic.subtopics.filter(function (s) { return !ql || s.name.toLowerCase().indexOf(ql) > -1; }) : [];
+		var html = items.map(function (s) { return '<button type="button" class="st-picker__opt' + (s.slug === selected ? ' is-on' : '') + '" role="option" aria-selected="' + (s.slug === selected ? 'true' : 'false') + '" data-picker-pick="' + esc(s.slug) + '">' + esc(s.name) + '</button>'; }).join('');
+		var exact = topic && topic.subtopics.some(function (s) { return s.name.toLowerCase() === ql; });
+		if (ql && !exact) { html += '<button type="button" class="st-picker__opt st-picker__opt--new" role="option" data-picker-create="' + esc(q.trim()) + '"><span class="st-picker__plus">+</span> Create “' + esc(q.trim()) + '”</button>'; }
+		if (!html) { html = '<div class="st-picker__empty">No subtopics yet — type a name to create one.</div>'; }
+		return html;
+	}
+	function pickerState(key) { return key === 'wssubtopic' ? S.ws : S.lesson; }
+	function pickerPaint(box, q) {
+		var topic = B.topics.filter(function (t) { return t.slug === box.getAttribute('data-picker-topic'); })[0];
+		var state = pickerState(box.getAttribute('data-picker'));
+		box.querySelector('[data-picker-list]').innerHTML = pickerOptions(topic, q, state.subtopic);
+	}
+	function pickerOpen(box, open) {
+		box.querySelector('[data-picker-list]').toggleAttribute('hidden', !open);
+		box.querySelector('[data-picker-input]').setAttribute('aria-expanded', open ? 'true' : 'false');
+		box.classList.toggle('is-open', open);
+	}
+	function pickerCreate(box, name) {
+		var key = box.getAttribute('data-picker'), topicSlug = box.getAttribute('data-picker-topic');
+		var topic = B.topics.filter(function (t) { return t.slug === topicSlug; })[0];
+		if (!topic) { return; }
+		box.classList.add('is-busy');
+		api('studio/subtopics', { method: 'POST', body: { topic: topicSlug, name: name } }).then(function (s) {
+			if (!topic.subtopics.some(function (x) { return x.slug === s.slug; })) { topic.subtopics.push({ id: s.id, slug: s.slug, name: s.name, order: s.order }); }
+			pickerState(key).subtopic = s.slug; render(); toast('Subtopic “' + s.name + '” added');
+		}).catch(function (err) { box.classList.remove('is-busy'); toast(err.message); });
+	}
 	function levelName(slug) { var l = B.levels.filter(function (x) { return x.slug === slug; })[0]; return l ? l.name : ''; }
 	function topicName(slug) {
 		for (var i = 0; i < B.topics.length; i++) {
@@ -123,9 +162,8 @@
 			html += '<div class="st-panel"><h2>Where does it belong?</h2><p class="st-panel__sub">Not sure? Pick the closest — you can change it any time.</p>' +
 				'<div class="st-label">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, L.level === l.slug, { level: l.slug }); }).join('') + '</div>' +
 				'<div class="st-label st-label--24">Topic</div><div class="st-chips">' + B.topics.map(function (t) { return chip(t.name, L.topic === t.slug, { topic: t.slug }); }).join('') + '</div>';
-			if (topic && topic.subtopics.length) {
-				html += '<div class="st-label st-label--24">Subtopic <span style="font-weight:400;color:var(--muted)">(optional)</span></div><div class="st-chips">' + topic.subtopics.map(function (s) { return chip(s.name, L.subtopic === s.slug, { subtopic: s.slug }); }).join('') + '</div>';
-			}
+			html += '<div class="st-label st-label--24">Subtopic <span style="font-weight:400;color:var(--muted)">(optional)</span></div>' + picker('subtopic', topic, L.subtopic) +
+				'<p class="st-note st-note--8">Can’t find the right one? Type a new name and choose “Create” — it’s added under ' + esc(topic ? topic.name : 'the topic') + ' straight away.</p>';
 			html += '</div>';
 		}
 		if (L.step === 3) {
@@ -212,9 +250,8 @@
 			'<div class="st-inputrow"><input type="text" class="st-input" value="' + esc(W.title) + '" placeholder="e.g. Sharing in a ratio" aria-label="Worksheet name" data-ws-title></div>' +
 			'<div class="st-label st-label--24">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, W.level === l.slug, { wslevel: l.slug }); }).join('') + '</div>' +
 			'<div class="st-label st-label--24">Topic</div><div class="st-chips">' + B.topics.map(function (t) { return chip(t.name, W.topic === t.slug, { wstopic: t.slug }); }).join('') + '</div>';
-		if (topic && topic.subtopics.length) {
-			html += '<div class="st-label st-label--24">Subtopic <span style="font-weight:400;color:var(--muted)">(optional)</span></div><div class="st-chips">' + topic.subtopics.map(function (s) { return chip(s.name, W.subtopic === s.slug, { wssubtopic: s.slug }); }).join('') + '</div>';
-		}
+		html += '<div class="st-label st-label--24">Subtopic <span style="font-weight:400;color:var(--muted)">(optional)</span></div>' + picker('wssubtopic', topic, W.subtopic) +
+			'<p class="st-note st-note--8">Can’t find the right one? Type a new name and choose “Create”.</p>';
 		html += '</div>' +
 			'<div class="st-panel"><h2>The PDFs</h2><p class="st-panel__sub">The worksheet itself, and the worked answers if you have them — answers sit behind “Reveal answers” on the page.</p>' +
 			'<div class="st-filerow st-filerow--first"><div><div class="st-filerow__label">Worksheet PDF</div><div class="st-filerow__status' + (W.pdf ? ' is-ok' : '') + '">' + esc(W.pdf ? '✓ ' + W.pdf.filename + ' added' : 'Needed before you can publish.') + '</div></div><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="wspdf">Choose PDF</label></div>' +
@@ -388,7 +425,39 @@
 		var f = e.target.closest('[data-find-form]');
 		if (f) { e.preventDefault(); var v = f.querySelector('[data-yt]').value.trim(); if (v) { findVideo(v); } }
 	});
+	/* Subtopic picker: filter as you type, keyboard navigation, close on blur. */
+	root.addEventListener('focusin', function (e) {
+		if (e.target.matches('[data-picker-input]')) {
+			var box = e.target.closest('[data-picker]');
+			var q = e.target.value === box.getAttribute('data-picker-selected') ? '' : e.target.value;
+			pickerPaint(box, q); pickerOpen(box, true);
+		}
+	});
+	root.addEventListener('focusout', function (e) {
+		var box = e.target.closest && e.target.closest('[data-picker]');
+		if (!box || (e.relatedTarget && box.contains(e.relatedTarget))) { return; }
+		var input = box.querySelector('[data-picker-input]');
+		input.value = box.getAttribute('data-picker-selected');
+		pickerOpen(box, false);
+	});
+	root.addEventListener('keydown', function (e) {
+		var box = e.target.closest && e.target.closest('[data-picker]');
+		if (!box) { return; }
+		var opts = Array.prototype.slice.call(box.querySelectorAll('.st-picker__opt'));
+		var i = opts.indexOf(e.target);
+		if (e.key === 'Escape') { e.preventDefault(); box.querySelector('[data-picker-input]').value = box.getAttribute('data-picker-selected'); pickerOpen(box, false); return; }
+		if (e.key === 'ArrowDown') { e.preventDefault(); pickerOpen(box, true); if (opts[i + 1]) { opts[i + 1].focus(); } return; }
+		if (e.key === 'ArrowUp') { e.preventDefault(); if (i > 0) { opts[i - 1].focus(); } else { box.querySelector('[data-picker-input]').focus(); } return; }
+		if (e.key === 'Enter' && e.target.matches('[data-picker-input]')) {
+			e.preventDefault();
+			var q = e.target.value.trim();
+			var visible = opts.filter(function (o) { return o.hasAttribute('data-picker-pick'); });
+			if (visible.length === 1 || (visible[0] && visible[0].textContent.trim().toLowerCase() === q.toLowerCase())) { visible[0].click(); }
+			else if (q) { pickerCreate(box, q); }
+		}
+	});
 	root.addEventListener('input', function (e) {
+		if (e.target.matches('[data-picker-input]')) { var pb = e.target.closest('[data-picker]'); pickerPaint(pb, e.target.value); pickerOpen(pb, true); return; }
 		if (e.target.matches('[data-yt]')) { S.lesson.yt = e.target.value; }
 		if (e.target.matches('[data-quiz-text]')) { S.lesson.quizText = e.target.value; S.lesson.quizResult = null; }
 		if (e.target.matches('[data-ed="date"]')) { S.ed.date = e.target.value; S.ed.error = ''; render(); }
@@ -429,10 +498,13 @@
 				.catch(function (err) { S.syncing = false; toast(err.message); render(); });
 			return;
 		}
+		// Subtopic picker (lesson wizard + standalone worksheet)
+		if ((el = e.target.closest('[data-picker-pick]'))) { var pbox = el.closest('[data-picker]'); pickerState(pbox.getAttribute('data-picker')).subtopic = el.getAttribute('data-picker-pick'); render(); return; }
+		if ((el = e.target.closest('[data-picker-create]'))) { pickerCreate(el.closest('[data-picker]'), el.getAttribute('data-picker-create')); return; }
+		if ((el = e.target.closest('[data-picker-clear]'))) { pickerState(el.closest('[data-picker]').getAttribute('data-picker')).subtopic = ''; render(); return; }
 		// Lesson wizard
 		if ((el = e.target.closest('[data-level]'))) { L.level = el.getAttribute('data-level'); render(); return; }
 		if ((el = e.target.closest('[data-topic]'))) { L.topic = el.getAttribute('data-topic'); L.subtopic = ''; render(); return; }
-		if ((el = e.target.closest('[data-subtopic]'))) { var s = el.getAttribute('data-subtopic'); L.subtopic = L.subtopic === s ? '' : s; render(); return; }
 		if ((el = e.target.closest('[data-copy]'))) {
 			try { navigator.clipboard.writeText(B.prompt); } catch (err) {}
 			L.copied = true; render(); return;
@@ -467,7 +539,6 @@
 		var W = S.ws;
 		if ((el = e.target.closest('[data-wslevel]'))) { W.level = el.getAttribute('data-wslevel'); render(); return; }
 		if ((el = e.target.closest('[data-wstopic]'))) { W.topic = el.getAttribute('data-wstopic'); W.subtopic = ''; render(); return; }
-		if ((el = e.target.closest('[data-wssubtopic]'))) { var ss = el.getAttribute('data-wssubtopic'); W.subtopic = W.subtopic === ss ? '' : ss; render(); return; }
 		if ((el = e.target.closest('[data-publish-ws]'))) {
 			W.title = (root.querySelector('[data-ws-title]') || { value: W.title }).value.trim();
 			W.desc = (root.querySelector('[data-ws-desc]') || { value: W.desc }).value;
