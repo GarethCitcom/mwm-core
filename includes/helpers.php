@@ -827,6 +827,7 @@ function mwm_pathway_data( $post ): ?array {
 				'note'        => (string) ( $r['note'] ?? '' ),
 				'coming_soon' => $soon,
 				'lesson_id'   => $lesson['id'] ?? 0,
+				'lesson_title' => $lesson['title'] ?? '',
 				'url'         => $lesson['url'] ?? '',
 				'video'       => (bool) $lesson,
 				'worksheet'   => (bool) ( $lesson['has_worksheet'] ?? false ),

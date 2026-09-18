@@ -1008,3 +1008,137 @@ html[data-theme="dark"] .mwm-tag--warn {
 	color: var(--muted);
 	white-space: nowrap;
 }
+
+/* Revision pathway editor */
+.st-input--sm {
+	height: 40px;
+	font-size: 14px;
+}
+.st-pw-group {
+	margin-top: 20px;
+	padding: 16px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--tint);
+}
+.st-pw-group__head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.st-pw-group__name {
+	font-weight: 600;
+	max-width: 420px;
+}
+.st-pw-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	margin-top: 12px;
+	padding: 14px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--card);
+}
+.st-pw-row__step {
+	flex-shrink: 0;
+	width: 32px;
+	height: 32px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	background: var(--tint);
+	color: var(--link);
+	font-size: 13px;
+	font-weight: 700;
+	margin-top: 4px;
+}
+.st-pw-row__main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.st-pw-row__topic {
+	width: 100%;
+	min-width: 0;
+	font-weight: 600;
+}
+.st-pw-row__extras {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+.st-pw-row__extras .st-input {
+	flex: 1;
+	min-width: min(260px, 100%);
+}
+.st-check--inline {
+	margin: 0;
+	white-space: nowrap;
+}
+.st-picker--inline {
+	margin-top: 0;
+	max-width: none;
+}
+.st-picker--inline .st-picker__input {
+	height: 40px;
+	font-size: 14px;
+}
+.st-pw-row__tools {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+}
+.st-iconbtn {
+	width: 32px;
+	height: 32px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--card);
+	color: var(--ink);
+	font-size: 14px;
+	cursor: pointer;
+}
+.st-iconbtn:hover {
+	background: var(--tint);
+}
+.st-iconbtn--danger:hover {
+	color: var(--link);
+	border-color: var(--link);
+}
+.st-pw-add {
+	margin-top: 12px;
+}
+.st-pw-plan {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: 16px;
+}
+.st-pw-plan__row {
+	display: flex;
+	gap: 12px;
+	align-items: flex-end;
+	flex-wrap: wrap;
+}
+.st-field--grow {
+	flex: 1;
+	min-width: 220px;
+}
+.st-pw-plan__row .st-iconbtn {
+	height: 40px;
+	width: 40px;
+}
+@media (max-width: 700px) {
+	.st-pw-row {
+		flex-wrap: wrap;
+	}
+	.st-pw-row__tools {
+		width: 100%;
+		justify-content: flex-end;
+	}
+}

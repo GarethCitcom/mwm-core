@@ -47,6 +47,8 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/worksheets', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_worksheet' ] ] ) );
 		register_rest_route( $ns, '/studio/worksheets/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_worksheet' ] ] ) );
 		register_rest_route( $ns, '/studio/subtopics', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_create_subtopic' ] ] ) );
+		register_rest_route( $ns, '/studio/pathways', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_pathway' ] ] ) );
+		register_rest_route( $ns, '/studio/pathways/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_pathway' ] ] ) );
 		register_rest_route( $ns, '/studio/upload', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_upload' ] ] ) );
 		register_rest_route( $ns, '/studio/quiz/validate', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_validate_quiz' ] ] ) );
 		register_rest_route( $ns, '/studio/past-papers', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_past_paper' ] ] ) );
@@ -235,6 +237,97 @@ class MWM_REST {
 		$card['status']    = get_post_status( $id );
 		$card['content']   = get_post_field( 'post_content', $id );
 		return rest_ensure_response( $card );
+	}
+
+	/**
+	 * A pathway for the Studio editor: structured data plus post status.
+	 */
+	public static function studio_get_pathway( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$id = (int) $r['id'];
+		if ( get_post_type( $id ) !== 'mwm_pathway' ) {
+			return new WP_Error( 'not_found', 'Pathway not found', [ 'status' => 404 ] );
+		}
+		$d = mwm_pathway_data( $id );
+		$d['status'] = get_post_status( $id );
+		return rest_ensure_response( $d );
+	}
+
+	/**
+	 * Create or update a revision pathway from the Studio: level, boards, ordered topic groups (each row optionally
+	 * linked to a lesson) and the suggested week-by-week plan.
+	 */
+	public static function studio_save_pathway( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$p        = (array) $r->get_json_params();
+		$id       = (int) ( $p['id'] ?? 0 );
+		$level    = sanitize_key( (string) ( $p['level'] ?? '' ) );
+		$boards   = array_values( array_intersect( array_map( 'sanitize_key', (array) ( $p['boards'] ?? [] ) ), array_keys( mwm_boards() ) ) );
+		$complete = ! empty( $p['complete'] );
+		$title    = sanitize_text_field( (string) ( $p['title'] ?? '' ) );
+		if ( $id && get_post_type( $id ) !== 'mwm_pathway' ) {
+			return new WP_Error( 'not_found', 'Pathway not found', [ 'status' => 404 ] );
+		}
+		if ( ! isset( mwm_levels()[ $level ] ) ) {
+			return new WP_Error( 'missing_level', 'Pick the level this pathway is for.', [ 'status' => 400 ] );
+		}
+		$groups = [];
+		foreach ( (array) ( $p['groups'] ?? [] ) as $g ) {
+			$rows = [];
+			foreach ( (array) ( $g['rows'] ?? [] ) as $row ) {
+				$lesson = (int) ( $row['lesson'] ?? 0 );
+				if ( $lesson && get_post_type( $lesson ) !== 'mwm_lesson' ) {
+					$lesson = 0;
+				}
+				$topic = sanitize_text_field( (string) ( $row['topic'] ?? '' ) );
+				if ( $topic === '' && ! $lesson ) {
+					continue; // An empty row.
+				}
+				$rows[] = [
+					'topic'       => $topic,
+					'lesson'      => $lesson ?: '',
+					'note'        => sanitize_text_field( (string) ( $row['note'] ?? '' ) ),
+					'coming_soon' => ! empty( $row['coming_soon'] ) ? 1 : 0,
+				];
+			}
+			$name = sanitize_text_field( (string) ( $g['name'] ?? '' ) );
+			if ( $name === '' && ! $rows ) {
+				continue;
+			}
+			$groups[] = [ 'name' => $name, 'rows' => $rows ];
+		}
+		if ( ! $groups ) {
+			return new WP_Error( 'missing_topics', 'Add at least one group with a topic in it.', [ 'status' => 400 ] );
+		}
+		$plan = [];
+		foreach ( (array) ( $p['plan'] ?? [] ) as $w ) {
+			$week  = sanitize_text_field( (string) ( $w['week'] ?? '' ) );
+			$focus = sanitize_text_field( (string) ( $w['focus'] ?? '' ) );
+			if ( ! $week || ! strtotime( $week ) || $focus === '' ) {
+				continue;
+			}
+			$plan[] = [ 'week_commencing' => gmdate( 'Y-m-d', strtotime( $week ) ), 'focus' => $focus, 'short' => sanitize_text_field( (string) ( $w['short'] ?? '' ) ) ];
+		}
+		usort( $plan, static fn( $a, $b ) => strcmp( $a['week_commencing'], $b['week_commencing'] ) );
+
+		$title   = $title ?: mwm_level_name( $level ) . ' revision pathway' . ( $boards ? ' (' . implode( ', ', array_map( 'mwm_board_name', $boards ) ) . ')' : '' );
+		$postarr = [ 'post_type' => 'mwm_pathway', 'post_status' => 'publish', 'post_title' => $title ];
+		if ( $id ) {
+			$postarr['ID'] = $id;
+			$id = (int) wp_update_post( $postarr, true );
+		} else {
+			$id = (int) wp_insert_post( $postarr, true );
+		}
+		if ( is_wp_error( $id ) || ! $id ) {
+			return new WP_Error( 'save_failed', 'Something went wrong saving the pathway. Try again in a moment.', [ 'status' => 500 ] );
+		}
+		wp_set_object_terms( $id, $level, 'mwm_level' );
+		wp_set_object_terms( $id, $boards, 'mwm_board' );
+		update_post_meta( $id, 'complete', $complete ? 1 : 0 );
+		if ( function_exists( 'update_field' ) ) {
+			update_field( 'field_mwm_pw_complete', $complete ? 1 : 0, $id );
+			update_field( 'field_mwm_pw_groups', $groups, $id );
+			update_field( 'field_mwm_pw_plan', $plan, $id );
+		}
+		return rest_ensure_response( mwm_pathway_data( $id ) );
 	}
 
 	/**
@@ -687,6 +780,22 @@ class MWM_REST {
 				];
 			}
 		}
+		if ( in_array( $kind, [ 'all', 'pathways' ], true ) ) {
+			foreach ( get_posts( [ 'post_type' => 'mwm_pathway', 'post_status' => 'publish', 'posts_per_page' => $limit, 'no_found_rows' => true ] ) as $p ) {
+				$d      = mwm_pathway_data( $p );
+				$boards = $d['boards'] ? implode( ', ', array_map( 'mwm_board_name', $d['boards'] ) ) : 'All boards';
+				$rows[] = [
+					'id'    => $p->ID,
+					'kind'  => 'Pathway',
+					'title' => $d['title'],
+					'meta'  => implode( ' · ', array_filter( [ $d['level_name'], $boards, $d['total'] . ' topics', $d['complete'] ? 'list complete' : 'more to add', count( $d['plan'] ) ? count( $d['plan'] ) . '-week plan' : '' ] ) ),
+					'flags' => $d['total'] ? [] : [ 'empty' ],
+					'url'   => trailingslashit( mwm_page_url( 'revision' ) ) . $d['level'] . '/' . ( $d['boards'][0] ?? '' ),
+					'date'  => $p->post_date,
+					'added' => 'Pathway · added ' . mwm_relative_label( $p->post_date ),
+				];
+			}
+		}
 		usort( $rows, static fn( $a, $b ) => strcmp( $b['date'], $a['date'] ) );
 		return $rows;
 	}
@@ -696,7 +805,7 @@ class MWM_REST {
 	}
 
 	private static function studio_types(): array {
-		return [ 'mwm_lesson', 'mwm_worksheet', 'mwm_past_paper', 'mwm_exam_date', 'mwm_quiz' ];
+		return [ 'mwm_lesson', 'mwm_worksheet', 'mwm_past_paper', 'mwm_exam_date', 'mwm_quiz', 'mwm_pathway' ];
 	}
 
 	public static function studio_trash( WP_REST_Request $r ): WP_REST_Response|WP_Error {

@@ -81,6 +81,7 @@
 		if (name === 'play') { return '<svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M7 4.5l9 5.5-9 5.5z"></path></svg>'; }
 		if (name === 'worksheet') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><rect x="3" y="2" width="10" height="12" rx="1.5"></rect><path d="M5.5 6h5M5.5 9h5"></path></svg>'; }
 		if (name === 'download') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5"></path><line x1="3" y1="13" x2="13" y2="13"></line></svg>'; }
+		if (name === 'route') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><circle cx="3.5" cy="3.5" r="1.5"></circle><circle cx="12.5" cy="12.5" r="1.5"></circle><path d="M5 3.5h4a2.5 2.5 0 0 1 0 5H7a2.5 2.5 0 0 0 0 5h4"></path></svg>'; }
 		if (name === 'calendar') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><rect x="2" y="3" width="12" height="11" rx="2"></rect><line x1="2" y1="6.5" x2="14" y2="6.5"></line><line x1="5.5" y1="1.5" x2="5.5" y2="4"></line><line x1="10.5" y1="1.5" x2="10.5" y2="4"></line></svg>'; }
 		if (name === 'tick') { return '<svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg>'; }
 		return '';
@@ -104,6 +105,7 @@
 		content: B.content, kindFilter: 'All', issueFilter: '', confirmId: null, lastDeleted: null,
 		lesson: freshLesson(),
 		pp: freshPaper({}),
+		pw: freshPathway(),
 		ws: freshWorksheet(),
 		ed: { paper: 'Paper 1 (non-calculator)', date: '', session: 'morning', level: 'gcse-higher', board: 'edexcel', checked: false, saving: false, error: '', dateConfirm: null },
 		dates: B.dates
@@ -128,6 +130,7 @@
 			'<p>Anything you add to these YouTube playlists appears on the site overnight, automatically. There’s nothing for you to do here.</p>' +
 			'<div class="st-list">' + S.playlists.map(function (pl) { return '<div class="st-list__row"><span class="st-list__name">' + esc(pl.name) + '</span><span class="st-list__meta">' + esc(pl.meta) + '</span></div>'; }).join('') +
 			'<div class="st-list__foot"><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-sync' + (S.syncing ? ' disabled' : '') + '>' + esc(syncLabel) + '</button>' + (S.sync && S.sync.error && !S.synced ? '<p class="st-error" style="margin-top:8px">' + esc(S.sync.error) + '</p>' : '') + '</div></div></div>' +
+			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('route') + '</span><div class="st-card__text"><h2>Revision pathways</h2><p>The order students revise topics in, per level — with links to your lessons and an optional week-by-week plan.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="pathways">Edit pathways<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('calendar') + '</span><div class="st-card__text"><h2>Update exam dates</h2><p>Once a year, when the boards confirm them — verified dates appear on the exam calendar.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="dates">Update dates<span aria-hidden="true">→</span></button></div>' +
 			'<h2 class="st-h2">Recently added</h2>' +
 			'<div class="st-list st-list--12">' + (S.recent.length ? S.recent.map(function (r) { return '<div class="st-list__row"><span class="st-list__name" style="flex:1">' + esc(r.title) + '</span><span class="st-list__sub" style="margin:0;white-space:nowrap">' + esc(r.added) + '</span>' + tag('Live', 'mwm-tag--live') + '</div>'; }).join('') : '<div class="st-list__row"><span class="mwm-meta">Nothing added yet — your first lesson will show here.</span></div>') + '</div>' +
@@ -230,16 +233,19 @@
 		],
 		Worksheets: [
 			{ key: 'unlinked', label: 'Not linked to a lesson', tag: 'No lesson' }
+		],
+		Pathways: [
+			{ key: 'empty', label: 'No topics yet', tag: 'No topics' }
 		]
 	};
 	function issueTag(key) {
-		var all = ISSUES.Lessons.concat(ISSUES.Worksheets);
+		var all = ISSUES.Lessons.concat(ISSUES.Worksheets, ISSUES.Pathways);
 		var i = all.filter(function (x) { return x.key === key; })[0];
 		return i ? i.tag : key;
 	}
 	function viewContent() {
-		var kinds = ['All', 'Lessons', 'Worksheets', 'Past papers', 'Exam dates', 'Quizzes'];
-		var map = { 'Lessons': 'Lesson', 'Worksheets': 'Worksheet', 'Past papers': 'Past paper', 'Exam dates': 'Exam date', 'Quizzes': 'Quiz' };
+		var kinds = ['All', 'Lessons', 'Worksheets', 'Past papers', 'Pathways', 'Exam dates', 'Quizzes'];
+		var map = { 'Lessons': 'Lesson', 'Worksheets': 'Worksheet', 'Past papers': 'Past paper', 'Pathways': 'Pathway', 'Exam dates': 'Exam date', 'Quizzes': 'Quiz' };
 		var ofKind = S.content.filter(function (it) { return S.kindFilter === 'All' || map[S.kindFilter] === it.kind; });
 		var issues = ISSUES[S.kindFilter] || [];
 		var rows = S.issueFilter ? ofKind.filter(function (it) { return (it.flags || []).indexOf(S.issueFilter) > -1; }) : ofKind;
@@ -339,6 +345,96 @@
 		return html;
 	}
 
+	/* ---------------------------------------------------------------- revision pathways */
+	function freshPathway() {
+		return { id: 0, open: false, title: '', level: 'gcse-higher', boards: [], complete: false, groups: [{ name: '', rows: [{ topic: '', lesson: 0, lesson_title: '', note: '', coming_soon: false }] }], plan: [], published: null, publishing: false, error: '', editingTitle: '' };
+	}
+	function pwRow(g, r, row, step) {
+		var lesson = row.lesson
+			? '<span class="mwm-chip mwm-chip--md is-on st-chip--static">' + icon('play') + esc(row.lesson_title || ('Lesson #' + row.lesson)) + '<button type="button" class="st-chip__x" aria-label="Unlink lesson" data-pw-unlesson data-g="' + g + '" data-r="' + r + '">✕</button></span>'
+			: '<div class="st-picker st-picker--inline" data-pw-lesson-box><div class="st-picker__control"><input type="text" class="st-input st-picker__input" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-label="Link a lesson" placeholder="Link a lesson — search by name…" autocomplete="off" data-pw-lesson-input data-g="' + g + '" data-r="' + r + '"><span class="st-picker__caret" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></span></div><div class="st-picker__list" role="listbox" hidden data-pw-lesson-list></div></div>';
+		return '<div class="st-pw-row"><span class="st-pw-row__step">' + (step < 10 ? '0' + step : step) + '</span>' +
+			'<div class="st-pw-row__main">' +
+			'<input type="text" class="st-input st-pw-row__topic" value="' + esc(row.topic) + '" placeholder="Topic name students see, e.g. Solving linear equations" aria-label="Topic" data-pw-row="topic" data-g="' + g + '" data-r="' + r + '">' +
+			'<div class="st-pw-row__lesson">' + lesson + '</div>' +
+			'<div class="st-pw-row__extras"><input type="text" class="st-input st-input--sm" value="' + esc(row.note) + '" placeholder="Prerequisite note (optional), e.g. Do fractions first" aria-label="Note" data-pw-row="note" data-g="' + g + '" data-r="' + r + '">' +
+			'<label class="st-check st-check--inline"><input type="checkbox"' + (row.coming_soon ? ' checked' : '') + ' data-pw-row="coming_soon" data-g="' + g + '" data-r="' + r + '">Coming soon</label></div></div>' +
+			'<div class="st-pw-row__tools"><button type="button" class="st-iconbtn" aria-label="Move up" data-pw-move="up" data-g="' + g + '" data-r="' + r + '">↑</button><button type="button" class="st-iconbtn" aria-label="Move down" data-pw-move="down" data-g="' + g + '" data-r="' + r + '">↓</button><button type="button" class="st-iconbtn st-iconbtn--danger" aria-label="Remove topic" data-pw-delrow data-g="' + g + '" data-r="' + r + '">✕</button></div></div>';
+	}
+	function viewPathways() {
+		var P = S.pw;
+		var html = '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>';
+		if (!P.open) {
+			var list = S.content.filter(function (r) { return r.kind === 'Pathway'; });
+			return html + '<h1 class="st-h1 st-h1--after-back">Revision pathways</h1>' +
+				'<p class="st-intro">A pathway is the order students should revise topics in for a level — the site ticks them off as they go. One per level, or one per exam board if the order differs.</p>' +
+				'<button type="button" class="mwm-btn mwm-btn--primary" data-pw-new>Create a pathway</button>' +
+				'<div class="st-list st-list--20">' + (list.length ? list.map(function (r) {
+					return '<div class="st-list__row st-list__row--16"><div class="st-list__main"><div class="st-list__name">' + esc(r.title) + '</div><div class="st-list__sub">' + esc(r.meta) + '</div></div><button type="button" class="st-smallbtn" data-edit="' + r.id + '">Edit</button></div>';
+				}).join('') : '<div class="st-list__row"><span class="mwm-meta">No pathways yet — create the first one above.</span></div>') + '</div>';
+		}
+		html += '<h1 class="st-h1 st-h1--after-back">' + (P.id ? 'Edit a pathway' : 'Create a pathway') + '</h1>';
+		if (P.id) { html += '<div class="st-banner">You’re editing <strong>' + esc(P.editingTitle) + '</strong> — change what you need, then publish again.</div>'; }
+		if (P.published) {
+			return html + '<div class="st-success"><span class="st-success__icon">' + icon('tick') + '</span><h2>It’s live!</h2><p>' + esc(P.published.summary) + '</p>' +
+				'<div class="st-success__actions"><a href="' + esc(P.published.url) + '" class="mwm-btn mwm-btn--primary">See the pathway</a><button type="button" class="mwm-btn mwm-btn--secondary" data-pw-list>Back to pathways</button></div></div>';
+		}
+		var step = 0;
+		html += '<div class="st-panel"><h2>1 · Who is it for?</h2>' +
+			'<div class="st-label" style="margin-top:12px">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, P.level === l.slug, { pwlevel: l.slug }); }).join('') + '</div>' +
+			'<div class="st-label st-label--24">Exam boards <span style="font-weight:400;color:var(--muted)">(leave all off if the order is the same for every board)</span></div><div class="st-chips">' + Object.keys(B.boards).map(function (b) { return chip(B.boards[b], P.boards.indexOf(b) > -1, { pwboard: b }); }).join('') + '</div>' +
+			'<div class="st-label st-label--24">Name <span style="font-weight:400;color:var(--muted)">(optional — students don’t see this)</span></div><div class="st-inputrow" style="margin-top:8px"><input type="text" class="st-input" value="' + esc(P.title) + '" placeholder="e.g. GCSE Higher revision pathway" aria-label="Pathway name" data-pw="title"></div></div>';
+		html += '<div class="st-panel"><h2>2 · Topics, in the order to revise them</h2><p class="st-panel__sub">Put topics into groups (“Number”, “Algebra”…). Each topic can link to a lesson so students get the video, worksheet and quiz in one tap. Tick “Coming soon” for a topic you haven’t recorded yet.</p>';
+		P.groups.forEach(function (g, gi) {
+			html += '<div class="st-pw-group"><div class="st-pw-group__head"><input type="text" class="st-input st-pw-group__name" value="' + esc(g.name) + '" placeholder="Group name, e.g. Algebra" aria-label="Group name" data-pw-gname="' + gi + '">' +
+				'<div class="st-pw-row__tools"><button type="button" class="st-iconbtn" aria-label="Move group up" data-pw-gmove="up" data-g="' + gi + '">↑</button><button type="button" class="st-iconbtn" aria-label="Move group down" data-pw-gmove="down" data-g="' + gi + '">↓</button><button type="button" class="st-iconbtn st-iconbtn--danger" aria-label="Remove group" data-pw-delgroup="' + gi + '">✕</button></div></div>';
+			g.rows.forEach(function (row, ri) { step++; html += pwRow(gi, ri, row, step); });
+			html += '<button type="button" class="mwm-linkbtn mwm-linkbtn--sm st-pw-add" data-pw-addrow="' + gi + '">+ Add a topic</button></div>';
+		});
+		html += '<button type="button" class="mwm-btn mwm-btn--secondary mwm-btn--sm" style="margin-top:16px" data-pw-addgroup>+ Add a group</button>' +
+			'<label class="st-check" style="margin-top:20px"><input type="checkbox"' + (P.complete ? ' checked' : '') + ' data-pw="complete">The topic list is complete (untick while you’re still adding topics — the site says “more being added”)</label></div>';
+		html += '<div class="st-panel"><h2>3 · Suggested revision plan <span style="font-weight:400;color:var(--muted)">(optional)</span></h2><p class="st-panel__sub">A week-by-week focus shown next to the pathway. Skip it if you’d rather not.</p>' +
+			(P.plan.length ? '<div class="st-pw-plan">' + P.plan.map(function (w, i) {
+				return '<div class="st-pw-plan__row"><label class="st-field">Week commencing<input type="date" class="st-date" value="' + esc(w.week) + '" data-pw-plan="week" data-i="' + i + '"></label>' +
+					'<label class="st-field st-field--grow">Focus<input type="text" class="st-input st-input--sm" value="' + esc(w.focus) + '" placeholder="e.g. Number & ratio" data-pw-plan="focus" data-i="' + i + '"></label>' +
+					'<label class="st-field">Calendar label<input type="text" class="st-input st-input--sm" value="' + esc(w.short) + '" placeholder="e.g. Number" data-pw-plan="short" data-i="' + i + '"></label>' +
+					'<button type="button" class="st-iconbtn st-iconbtn--danger" aria-label="Remove week" data-pw-delplan="' + i + '">✕</button></div>';
+			}).join('') + '</div>' : '') +
+			'<button type="button" class="mwm-linkbtn mwm-linkbtn--sm st-pw-add" data-pw-addplan>+ Add a week</button></div>';
+		html += '<div class="st-panel"><h2>4 · Publish</h2>' +
+			'<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish st-publish--12" data-publish-pw' + (P.publishing ? ' disabled' : '') + '>' + (P.publishing ? 'Publishing…' : (P.id ? 'Publish changes' : 'Publish this pathway')) + '</button>' +
+			(P.error ? '<p class="st-error">' + esc(P.error) + '</p>' : '') +
+			'<p class="st-note st-note--12">It goes live straight away on the Revision page for this level.</p></div>';
+		return html;
+	}
+	function pwLessonSearch(box, q, g, r) {
+		var list = box.querySelector('[data-pw-lesson-list]');
+		var mine = ++wsSearchSeq;
+		q = q.trim();
+		if (!q) { list.setAttribute('hidden', ''); box.classList.remove('is-open'); return; }
+		list.innerHTML = '<div class="st-picker__empty">Searching…</div>'; list.removeAttribute('hidden'); box.classList.add('is-open');
+		// Searches every level (many imported lessons still need their level checking); the hint shows each lesson's level.
+		api('lessons?per_page=8&format=lesson&search=' + encodeURIComponent(q)).then(function (res) {
+			if (mine !== wsSearchSeq) { return; }
+			var items = res.items || [];
+			list.innerHTML = items.length
+				? items.map(function (l) { return '<button type="button" class="st-picker__opt" role="option" data-pw-pick="' + l.id + '" data-g="' + g + '" data-r="' + r + '" data-pw-title="' + esc(l.title) + '">' + esc(l.title) + '<span class="st-picker__hint">' + esc([l.level, l.subtopic || l.topic].filter(Boolean).join(' · ')) + '</span></button>'; }).join('')
+				: '<div class="st-picker__empty">No lessons match “' + esc(q) + '”.</div>';
+		}).catch(function () { list.innerHTML = '<div class="st-picker__empty">Couldn’t search just now — try again.</div>'; });
+	}
+	function pwSave() {
+		var P = S.pw;
+		P.publishing = true; P.error = ''; render();
+		var body = { id: P.id, title: P.title, level: P.level, boards: P.boards, complete: P.complete,
+			groups: P.groups.map(function (g) { return { name: g.name, rows: g.rows.map(function (r) { return { topic: r.topic, lesson: r.lesson, note: r.note, coming_soon: r.coming_soon }; }) }; }),
+			plan: P.plan };
+		api('studio/pathways', { method: 'POST', body: body }).then(function (d) {
+			P.publishing = false; P.id = d.id;
+			P.published = { summary: d.level_name + ' · ' + d.total + (d.total === 1 ? ' topic' : ' topics') + (d.boards.length ? ' · ' + d.boards.map(function (b) { return B.boards[b] || b; }).join(', ') : ' · all boards') + (d.plan.length ? ' · ' + d.plan.length + '-week plan' : ''), url: B.urls.revision.replace(/\/$/, '') + '/' + d.level + '/' + (d.boards[0] ? d.boards[0] + '/' : '') };
+			refreshContent(); render();
+		}).catch(function (err) { P.publishing = false; P.error = err.message; render(); });
+	}
+
 	function viewDates() {
 		var E = S.ed;
 		var ready = !!(E.date && E.checked);
@@ -371,12 +467,13 @@
 			case 'worksheets': html = viewWorksheet(); break;
 			case 'papers': html = viewPapers(); break;
 			case 'dates': html = viewDates(); break;
+			case 'pathways': html = viewPathways(); break;
 			default: html = viewDash();
 		}
 		root.innerHTML = html;
 		document.querySelectorAll('[data-studio-nav] [data-view]').forEach(function (a) {
-			// Past papers and exam dates live off the dashboard, so keep Dashboard lit while on them.
-			var on = a.getAttribute('data-view') === S.view || (a.getAttribute('data-view') === 'dash' && (S.view === 'papers' || S.view === 'dates'));
+			// Past papers, exam dates and pathways live off the dashboard, so keep Dashboard lit while on them.
+			var on = a.getAttribute('data-view') === S.view || (a.getAttribute('data-view') === 'dash' && (S.view === 'papers' || S.view === 'dates' || S.view === 'pathways'));
 			a.classList.toggle('is-current', on);
 			if (on) { a.setAttribute('aria-current', 'page'); } else { a.removeAttribute('aria-current'); }
 		});
@@ -424,11 +521,24 @@
 		}).catch(function (e) { L.publishing = false; L.publishError = e.message; render(); });
 	}
 	function refreshContent() {
-		api('studio/content').then(function (rows) { S.content = rows; S.recent = rows.slice(0, 3); S.dates = rows.filter(function (r) { return r.kind === 'Exam date'; }); if (S.view === 'content' || S.view === 'dash' || S.view === 'dates') { render(); } }).catch(function () {});
+		api('studio/content').then(function (rows) { S.content = rows; S.recent = rows.slice(0, 3); S.dates = rows.filter(function (r) { return r.kind === 'Exam date'; }); if (S.view === 'content' || S.view === 'dash' || S.view === 'dates' || (S.view === 'pathways' && !S.pw.open)) { render(); } }).catch(function () {});
 	}
 	function editItem(id) {
 		var it = S.content.filter(function (r) { return r.id === id; })[0];
 		if (!it) { return; }
+		if (it.kind === 'Pathway') {
+			root.classList.add('st-busy');
+			api('studio/pathways/' + it.id).then(function (d) {
+				root.classList.remove('st-busy');
+				var PWD = freshPathway();
+				PWD.id = d.id; PWD.open = true; PWD.editingTitle = d.title; PWD.title = d.title; PWD.level = d.level || 'gcse-higher'; PWD.boards = d.boards || []; PWD.complete = !!d.complete;
+				PWD.groups = (d.groups || []).map(function (g) { return { name: g.name, rows: g.rows.map(function (r) { return { topic: r.topic, lesson: r.lesson_id || 0, lesson_title: r.lesson_title || '', note: r.note || '', coming_soon: !!r.coming_soon }; }) }; });
+				if (!PWD.groups.length) { PWD.groups = freshPathway().groups; }
+				PWD.plan = (d.plan || []).map(function (w) { return { week: w.week, focus: w.focus, short: w.short }; });
+				S.pw = PWD; go('pathways');
+			}).catch(function (err) { root.classList.remove('st-busy'); toast(err.message); });
+			return;
+		}
 		if (it.kind === 'Worksheet' && !it.lesson_id) {
 			root.classList.add('st-busy');
 			api('studio/worksheets/' + it.id).then(function (w) {
@@ -483,6 +593,8 @@
 		}
 	});
 	root.addEventListener('focusout', function (e) {
+		var lbox = e.target.closest && e.target.closest('[data-pw-lesson-box]');
+		if (lbox && !(e.relatedTarget && lbox.contains(e.relatedTarget))) { lbox.querySelector('[data-pw-lesson-list]').setAttribute('hidden', ''); lbox.classList.remove('is-open'); return; }
 		var wbox = e.target.closest && e.target.closest('[data-ppws]');
 		if (wbox && !(e.relatedTarget && wbox.contains(e.relatedTarget))) { wbox.querySelector('[data-ppws-list]').setAttribute('hidden', ''); wbox.classList.remove('is-open'); return; }
 		var box = e.target.closest && e.target.closest('[data-picker]');
@@ -534,6 +646,15 @@
 		if (e.target.matches('[data-yt]')) { S.lesson.yt = e.target.value; }
 		if (e.target.matches('[data-quiz-text]')) { S.lesson.quizText = e.target.value; S.lesson.quizResult = null; }
 		if (e.target.matches('[data-ed="date"]')) { S.ed.date = e.target.value; S.ed.error = ''; render(); }
+		// Pathway editor: text inputs update state without re-rendering, so typing keeps focus.
+		if (e.target.matches('[data-pw="title"]')) { S.pw.title = e.target.value; }
+		if (e.target.matches('[data-pw-gname]')) { S.pw.groups[Number(e.target.getAttribute('data-pw-gname'))].name = e.target.value; }
+		if (e.target.matches('[data-pw-row="topic"], [data-pw-row="note"]')) { S.pw.groups[Number(e.target.getAttribute('data-g'))].rows[Number(e.target.getAttribute('data-r'))][e.target.getAttribute('data-pw-row')] = e.target.value; }
+		if (e.target.matches('[data-pw-plan]')) { S.pw.plan[Number(e.target.getAttribute('data-i'))][e.target.getAttribute('data-pw-plan')] = e.target.value; }
+		if (e.target.matches('[data-pw-lesson-input]')) {
+			var lb = e.target.closest('[data-pw-lesson-box]'), lq = e.target.value, lg = e.target.getAttribute('data-g'), lr = e.target.getAttribute('data-r');
+			clearTimeout(wsSearchTimer); wsSearchTimer = setTimeout(function () { pwLessonSearch(lb, lq, lg, lr); }, 250);
+		}
 		if (e.target.matches('[data-ws-title]')) { S.ws.title = e.target.value; S.ws.error = ''; var t = root.querySelector('.st-preview__title'); if (t) { t.textContent = S.ws.title || 'Untitled worksheet'; } }
 		if (e.target.matches('[data-ws-desc]')) { S.ws.desc = e.target.value; }
 	});
@@ -562,6 +683,8 @@
 		} else if (el.matches('[data-pp]')) { S.pp[el.getAttribute('data-pp')] = el.value; }
 		else if (el.matches('[data-ed="paper"]')) { S.ed.paper = el.value; }
 		else if (el.matches('[data-ed="checked"]')) { S.ed.checked = el.checked; S.ed.error = ''; render(); }
+		else if (el.matches('[data-pw="complete"]')) { S.pw.complete = el.checked; }
+		else if (el.matches('[data-pw-row="coming_soon"]')) { S.pw.groups[Number(el.getAttribute('data-g'))].rows[Number(el.getAttribute('data-r'))].coming_soon = el.checked; }
 	});
 	root.addEventListener('click', function (e) {
 		var el, L = S.lesson, P = S.pp, E = S.ed;
@@ -627,6 +750,23 @@
 		}
 		if ((el = e.target.closest('[data-reset-ws]'))) { S.ws = freshWorksheet(); render(); return; }
 		// Past papers
+		// Revision pathways
+		var PW = S.pw;
+		if ((el = e.target.closest('[data-pw-new]'))) { S.pw = freshPathway(); S.pw.open = true; render(); return; }
+		if ((el = e.target.closest('[data-pw-list]'))) { S.pw = freshPathway(); render(); return; }
+		if ((el = e.target.closest('[data-pwlevel]'))) { PW.level = el.getAttribute('data-pwlevel'); render(); return; }
+		if ((el = e.target.closest('[data-pwboard]'))) { var pb = el.getAttribute('data-pwboard'); PW.boards = PW.boards.indexOf(pb) > -1 ? PW.boards.filter(function (b) { return b !== pb; }) : PW.boards.concat([pb]); render(); return; }
+		if ((el = e.target.closest('[data-pw-addgroup]'))) { PW.groups.push({ name: '', rows: [{ topic: '', lesson: 0, lesson_title: '', note: '', coming_soon: false }] }); render(); return; }
+		if ((el = e.target.closest('[data-pw-delgroup]'))) { PW.groups.splice(Number(el.getAttribute('data-pw-delgroup')), 1); render(); return; }
+		if ((el = e.target.closest('[data-pw-gmove]'))) { var gi = Number(el.getAttribute('data-g')), gj = gi + (el.getAttribute('data-pw-gmove') === 'up' ? -1 : 1); if (PW.groups[gj]) { var tmpG = PW.groups[gi]; PW.groups[gi] = PW.groups[gj]; PW.groups[gj] = tmpG; render(); } return; }
+		if ((el = e.target.closest('[data-pw-addrow]'))) { PW.groups[Number(el.getAttribute('data-pw-addrow'))].rows.push({ topic: '', lesson: 0, lesson_title: '', note: '', coming_soon: false }); render(); return; }
+		if ((el = e.target.closest('[data-pw-delrow]'))) { PW.groups[Number(el.getAttribute('data-g'))].rows.splice(Number(el.getAttribute('data-r')), 1); render(); return; }
+		if ((el = e.target.closest('[data-pw-move]'))) { var rows = PW.groups[Number(el.getAttribute('data-g'))].rows, ri = Number(el.getAttribute('data-r')), rj = ri + (el.getAttribute('data-pw-move') === 'up' ? -1 : 1); if (rows[rj]) { var tmpR = rows[ri]; rows[ri] = rows[rj]; rows[rj] = tmpR; render(); } return; }
+		if ((el = e.target.closest('[data-pw-pick]'))) { var prow = PW.groups[Number(el.getAttribute('data-g'))].rows[Number(el.getAttribute('data-r'))]; prow.lesson = Number(el.getAttribute('data-pw-pick')); prow.lesson_title = el.getAttribute('data-pw-title'); if (!prow.topic) { prow.topic = prow.lesson_title; } render(); return; }
+		if ((el = e.target.closest('[data-pw-unlesson]'))) { var urow = PW.groups[Number(el.getAttribute('data-g'))].rows[Number(el.getAttribute('data-r'))]; urow.lesson = 0; urow.lesson_title = ''; render(); return; }
+		if ((el = e.target.closest('[data-pw-addplan]'))) { var last = PW.plan[PW.plan.length - 1]; var next = ''; if (last && last.week) { var dt = new Date(last.week); dt.setDate(dt.getDate() + 7); next = dt.toISOString().slice(0, 10); } PW.plan.push({ week: next, focus: '', short: '' }); render(); return; }
+		if ((el = e.target.closest('[data-pw-delplan]'))) { PW.plan.splice(Number(el.getAttribute('data-pw-delplan')), 1); render(); return; }
+		if ((el = e.target.closest('[data-publish-pw]'))) { pwSave(); return; }
 		if ((el = e.target.closest('[data-ppboard]'))) { P.board = el.getAttribute('data-ppboard'); render(); return; }
 		if ((el = e.target.closest('[data-pp-unlink]'))) { var uid = Number(el.getAttribute('data-pp-unlink')); P.worksheets = P.worksheets.filter(function (w) { return w.id !== uid; }); render(); return; }
 		if ((el = e.target.closest('[data-pp-unpdf]'))) { P.wsPdfs.splice(Number(el.getAttribute('data-pp-unpdf')), 1); render(); return; }
