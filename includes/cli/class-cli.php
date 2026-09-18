@@ -241,7 +241,7 @@ class MWM_CLI {
 		if ( ! empty( $r['quiz'] ) && ! mwm_lesson_quiz( $id ) ) {
 			$this->generic_quiz( $id, $r['title'] );
 		}
-		delete_post_meta( $id, '_mwm_quiz_id' );
+		mwm_reindex_lesson_quiz( $id );
 		return $id;
 	}
 
@@ -276,7 +276,7 @@ class MWM_CLI {
 		update_post_meta( $qid, 'lesson', $lesson_id );
 		update_post_meta( $qid, 'questions', wp_json_encode( $questions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
 		update_post_meta( $qid, 'estimated_minutes', 4 );
-		delete_post_meta( $lesson_id, '_mwm_quiz_id' );
+		mwm_reindex_lesson_quiz( $lesson_id );
 		return $qid;
 	}
 
@@ -692,6 +692,26 @@ class MWM_CLI {
 		}
 		$untagged = count( array_filter( $ids, static fn( $id ) => ! has_term( '', 'mwm_topic', $id ) ) );
 		WP_CLI::success( sprintf( 'Checked %d synced videos: %d newly tagged, %d still without a topic.', count( $ids ), $tagged, $untagged ) );
+	}
+
+	/**
+	 * Rebuild the per-lesson indexes the filters rely on (quiz_post, worksheet_post).
+	 *
+	 * @when after_wp_load
+	 */
+	public function reindex( array $args, array $assoc ): void {
+		$ids  = get_posts( [ 'post_type' => 'mwm_lesson', 'post_status' => 'any', 'fields' => 'ids', 'posts_per_page' => -1, 'no_found_rows' => true ] );
+		$quiz = 0;
+		$ws   = 0;
+		foreach ( $ids as $id ) {
+			if ( mwm_reindex_lesson_quiz( (int) $id ) ) {
+				$quiz++;
+			}
+			if ( mwm_lesson_worksheet( (int) $id ) ) {
+				$ws++;
+			}
+		}
+		WP_CLI::success( sprintf( '%d lessons indexed: %d with a quiz, %d with a worksheet.', count( $ids ), $quiz, $ws ) );
 	}
 
 	/**

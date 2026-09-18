@@ -308,13 +308,21 @@ function mwm_lesson_topic_terms( int $post_id ): array {
  * Quiz post attached to a lesson, or null.
  */
 function mwm_lesson_quiz( int $lesson_id ): ?WP_Post {
-	$cached = get_post_meta( $lesson_id, '_mwm_quiz_id', true );
-	if ( $cached ) {
-		$q = get_post( (int) $cached );
+	$indexed = (int) get_post_meta( $lesson_id, 'quiz_post', true );
+	if ( $indexed ) {
+		$q = get_post( $indexed );
 		if ( $q && $q->post_type === 'mwm_quiz' && $q->post_status === 'publish' && (int) get_post_meta( $q->ID, 'lesson', true ) === $lesson_id ) {
 			return $q;
 		}
 	}
+	$id = mwm_reindex_lesson_quiz( $lesson_id );
+	return $id ? get_post( $id ) : null;
+}
+
+/**
+ * Recompute the lesson's `quiz_post` index (used by the "Has quiz" filter so it can page on the server).
+ */
+function mwm_reindex_lesson_quiz( int $lesson_id ): int {
 	$q = get_posts( [
 		'post_type'      => 'mwm_quiz',
 		'post_status'    => 'publish',
@@ -325,11 +333,11 @@ function mwm_lesson_quiz( int $lesson_id ): ?WP_Post {
 		'no_found_rows'  => true,
 	] );
 	if ( $q ) {
-		update_post_meta( $lesson_id, '_mwm_quiz_id', $q[0] );
-		return get_post( $q[0] );
+		update_post_meta( $lesson_id, 'quiz_post', (int) $q[0] );
+		return (int) $q[0];
 	}
-	delete_post_meta( $lesson_id, '_mwm_quiz_id' );
-	return null;
+	delete_post_meta( $lesson_id, 'quiz_post' );
+	return 0;
 }
 
 /* -------------------------------------------------------------------------
@@ -422,7 +430,14 @@ function mwm_worksheet_data( $post, bool $with_lesson = true ): ?array {
  * Query worksheets (level/topic/subtopic/search) as data arrays.
  */
 function mwm_query_worksheets( array $args = [] ): array {
-	$a   = array_merge( [ 'level' => '', 'topic' => '', 'subtopic' => '', 'search' => '', 'per_page' => -1, 'exclude' => [], 'include' => [] ], $args );
+	return mwm_query_worksheets_paged( $args )['items'];
+}
+
+/**
+ * Paged worksheet query, same shape as mwm_query_lessons_paged().
+ */
+function mwm_query_worksheets_paged( array $args = [] ): array {
+	$a   = array_merge( [ 'level' => '', 'topic' => '', 'subtopic' => '', 'search' => '', 'per_page' => -1, 'page' => 1, 'exclude' => [], 'include' => [] ], $args );
 	$tax = [];
 	if ( $a['level'] ) {
 		$tax[] = [ 'taxonomy' => 'mwm_level', 'field' => 'slug', 'terms' => (array) $a['level'] ];
@@ -432,7 +447,8 @@ function mwm_query_worksheets( array $args = [] ): array {
 	} elseif ( $a['topic'] ) {
 		$tax[] = [ 'taxonomy' => 'mwm_topic', 'field' => 'slug', 'terms' => (array) $a['topic'], 'include_children' => true ];
 	}
-	$q = [ 'post_type' => 'mwm_worksheet', 'post_status' => 'publish', 'posts_per_page' => $a['per_page'], 'no_found_rows' => true, 'post__not_in' => (array) $a['exclude'] ];
+	$paged = (int) $a['per_page'] > 0;
+	$q     = [ 'post_type' => 'mwm_worksheet', 'post_status' => 'publish', 'posts_per_page' => $a['per_page'], 'paged' => max( 1, (int) $a['page'] ), 'no_found_rows' => ! $paged, 'post__not_in' => (array) $a['exclude'] ];
 	if ( $a['include'] ) {
 		$q['post__in'] = (array) $a['include'];
 		$q['orderby']  = 'post__in';
@@ -443,14 +459,21 @@ function mwm_query_worksheets( array $args = [] ): array {
 	if ( $a['search'] ) {
 		$q['s'] = $a['search'];
 	}
-	$out = [];
-	foreach ( get_posts( $q ) as $p ) {
+	$query = new WP_Query( $q );
+	$out   = [];
+	foreach ( $query->posts as $p ) {
 		$d = mwm_worksheet_data( $p, false );
 		if ( $d ) {
 			$out[] = $d;
 		}
 	}
-	return $out;
+	return [
+		'items'    => $out,
+		'total'    => $paged ? (int) $query->found_posts : count( $out ),
+		'pages'    => $paged ? (int) $query->max_num_pages : 1,
+		'page'     => $paged ? max( 1, (int) $a['page'] ) : 1,
+		'per_page' => (int) $a['per_page'],
+	];
 }
 
 /**
@@ -597,7 +620,14 @@ function mwm_lesson_card( $post ): ?array {
  * }
  */
 function mwm_query_lessons( array $args = [] ): array {
-	$defaults = [ 'level' => '', 'topic' => '', 'subtopic' => '', 'format' => '', 'theme' => '', 'worksheet' => false, 'quiz' => false, 'search' => '', 'per_page' => -1, 'exclude' => [], 'orderby' => 'date', 'order' => 'DESC', 'include' => [] ];
+	return mwm_query_lessons_paged( $args )['items'];
+}
+
+/**
+ * Paged lesson query. Returns ['items' => cards, 'total' => int, 'pages' => int, 'page' => int, 'per_page' => int].
+ */
+function mwm_query_lessons_paged( array $args = [] ): array {
+	$defaults = [ 'level' => '', 'topic' => '', 'subtopic' => '', 'format' => '', 'theme' => '', 'worksheet' => false, 'quiz' => false, 'search' => '', 'per_page' => -1, 'page' => 1, 'exclude' => [], 'orderby' => 'date', 'order' => 'DESC', 'include' => [] ];
 	$a        = array_merge( $defaults, $args );
 	$tax      = [];
 	if ( $a['level'] ) {
@@ -616,13 +646,15 @@ function mwm_query_lessons( array $args = [] ): array {
 	} elseif ( $a['theme'] ) {
 		$tax[] = [ 'taxonomy' => 'mwm_theme', 'field' => 'slug', 'terms' => (array) $a['theme'] ];
 	}
+	$paged = (int) $a['per_page'] > 0;
 	$q = [
 		'post_type'      => 'mwm_lesson',
 		'post_status'    => 'publish',
 		'posts_per_page' => $a['per_page'],
+		'paged'          => max( 1, (int) $a['page'] ),
 		'orderby'        => $a['orderby'],
 		'order'          => $a['order'],
-		'no_found_rows'  => true,
+		'no_found_rows'  => ! $paged,
 		'post__not_in'   => (array) $a['exclude'],
 	];
 	if ( $a['include'] ) {
@@ -638,19 +670,25 @@ function mwm_query_lessons( array $args = [] ): array {
 	if ( $a['worksheet'] ) {
 		$q['meta_query'][] = [ 'key' => 'worksheet_post', 'value' => '0', 'compare' => '>', 'type' => 'NUMERIC' ];
 	}
-	$posts = get_posts( $q );
-	$cards = [];
-	foreach ( $posts as $p ) {
-		$card = mwm_lesson_card( $p );
-		if ( ! $card ) {
-			continue;
-		}
-		if ( $a['quiz'] && ! $card['has_quiz'] ) {
-			continue;
-		}
-		$cards[] = $card;
+	if ( $a['quiz'] ) {
+		$q['meta_query'][] = [ 'key' => 'quiz_post', 'value' => '0', 'compare' => '>', 'type' => 'NUMERIC' ];
 	}
-	return $cards;
+	$query = new WP_Query( $q );
+	$cards = [];
+	foreach ( $query->posts as $p ) {
+		$card = mwm_lesson_card( $p );
+		if ( $card ) {
+			$cards[] = $card;
+		}
+	}
+	$total = $paged ? (int) $query->found_posts : count( $cards );
+	return [
+		'items'    => $cards,
+		'total'    => $total,
+		'pages'    => $paged ? (int) $query->max_num_pages : 1,
+		'page'     => $paged ? max( 1, (int) $a['page'] ) : 1,
+		'per_page' => (int) $a['per_page'],
+	];
 }
 
 /* -------------------------------------------------------------------------

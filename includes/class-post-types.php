@@ -13,6 +13,13 @@ class MWM_Post_Types {
 		add_action( 'save_post_mwm_lesson', [ __CLASS__, 'on_save_lesson' ], 20, 2 );
 		add_action( 'save_post_mwm_quiz', [ __CLASS__, 'on_save_quiz' ], 20, 2 );
 		add_action( 'save_post_mwm_worksheet', [ __CLASS__, 'on_save_worksheet' ], 20, 2 );
+		foreach ( [ 'trashed_post', 'untrashed_post', 'deleted_post' ] as $hook ) {
+			add_action( $hook, static function ( $post_id ) {
+				if ( get_post_type( $post_id ) === 'mwm_quiz' ) {
+					self::reindex_quiz_lessons( (int) $post_id );
+				}
+			}, 20 );
+		}
 		add_action( 'template_redirect', [ __CLASS__, 'redirect_single_past_paper' ] );
 	}
 
@@ -193,16 +200,25 @@ class MWM_Post_Types {
 		if ( ! has_term( '', 'mwm_format', $post_id ) ) {
 			wp_set_object_terms( $post_id, 'lesson', 'mwm_format' );
 		}
-		delete_post_meta( $post_id, '_mwm_quiz_id' );
 	}
 
+	/**
+	 * Keep each lesson's `quiz_post` index right whenever a quiz is saved, trashed or deleted.
+	 */
 	public static function on_save_quiz( int $post_id, WP_Post $post ): void {
 		if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
 			return;
 		}
-		$lesson = (int) get_post_meta( $post_id, 'lesson', true );
-		if ( $lesson ) {
-			delete_post_meta( $lesson, '_mwm_quiz_id' );
+		self::reindex_quiz_lessons( $post_id );
+	}
+
+	public static function reindex_quiz_lessons( int $quiz_id ): void {
+		$lessons = [ (int) get_post_meta( $quiz_id, 'lesson', true ) ];
+		foreach ( get_posts( [ 'post_type' => 'mwm_lesson', 'post_status' => 'any', 'fields' => 'ids', 'posts_per_page' => -1, 'no_found_rows' => true, 'meta_key' => 'quiz_post', 'meta_value' => $quiz_id ] ) as $lid ) {
+			$lessons[] = (int) $lid;
+		}
+		foreach ( array_unique( array_filter( $lessons ) ) as $lid ) {
+			mwm_reindex_lesson_quiz( $lid );
 		}
 	}
 

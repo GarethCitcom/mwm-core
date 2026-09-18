@@ -29,6 +29,7 @@ class MWM_REST {
 		$ns = self::NS;
 
 		register_rest_route( $ns, '/lessons', [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'get_lessons' ], 'permission_callback' => '__return_true' ] );
+		register_rest_route( $ns, '/worksheets', [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'get_worksheets' ], 'permission_callback' => '__return_true' ] );
 		register_rest_route( $ns, '/topics', [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'get_topics' ], 'permission_callback' => '__return_true' ] );
 		register_rest_route( $ns, '/pathway', [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'get_pathway' ], 'permission_callback' => '__return_true' ] );
 		register_rest_route( $ns, '/exam-dates', [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'get_exam_dates' ], 'permission_callback' => '__return_true' ] );
@@ -60,20 +61,84 @@ class MWM_REST {
 	 * Public
 	 * ------------------------------------------------------------ */
 
+	/**
+	 * GET /lessons — paged. Pass render=grid|short|gaming to also get each card's HTML from the theme.
+	 * Response: { items, html, total, pages, page, per_page }.
+	 */
 	public static function get_lessons( WP_REST_Request $r ): WP_REST_Response {
-		$format = sanitize_key( (string) $r->get_param( 'format' ) );
-		$cards  = mwm_query_lessons( [
+		$list   = static fn( $v ) => array_values( array_filter( array_map( 'sanitize_key', explode( ',', (string) $v ) ) ) );
+		$format = $list( $r->get_param( 'format' ) );
+		$theme  = $list( $r->get_param( 'theme' ) );
+		$result = mwm_query_lessons_paged( [
 			'level'     => sanitize_key( (string) $r->get_param( 'level' ) ),
 			'topic'     => sanitize_title( (string) $r->get_param( 'topic' ) ),
 			'subtopic'  => sanitize_title( (string) $r->get_param( 'subtopic' ) ),
-			'format'    => $format && $format !== 'all' ? $format : '',
-			'theme'     => sanitize_key( (string) $r->get_param( 'theme' ) ),
+			'format'    => $format && $format !== [ 'all' ] ? $format : '',
+			'theme'     => $theme === [ 'none' ] ? 'none' : ( $theme && $theme !== [ 'all' ] ? $theme : '' ),
 			'worksheet' => (bool) $r->get_param( 'worksheet' ),
 			'quiz'      => (bool) $r->get_param( 'quiz' ),
 			'search'    => sanitize_text_field( (string) $r->get_param( 'search' ) ),
-			'per_page'  => (int) ( $r->get_param( 'per_page' ) ?: -1 ),
+			'per_page'  => min( 48, max( 1, (int) ( $r->get_param( 'per_page' ) ?: 24 ) ) ),
+			'page'      => max( 1, (int) ( $r->get_param( 'page' ) ?: 1 ) ),
 		] );
-		return rest_ensure_response( array_map( [ __CLASS__, 'public_card' ], $cards ) );
+		$render = sanitize_key( (string) $r->get_param( 'render' ) );
+		$html   = [];
+		if ( $render ) {
+			foreach ( $result['items'] as $c ) {
+				$html[] = self::render_card( $c, $render );
+			}
+		}
+		$result['items'] = array_map( [ __CLASS__, 'public_card' ], $result['items'] );
+		$result['html']  = $html;
+		return rest_ensure_response( $result );
+	}
+
+	/**
+	 * Card HTML via the theme's renderers (the plugin has no markup of its own).
+	 */
+	private static function render_card( array $c, string $render ): string {
+		if ( $render === 'short' && function_exists( 'mwm_short_card' ) ) {
+			return mwm_short_card( $c, 'grid' );
+		}
+		if ( $render === 'gaming' && function_exists( 'mwm_gaming_card' ) ) {
+			return mwm_gaming_card( $c, 'level' );
+		}
+		if ( function_exists( 'mwm_video_card' ) ) {
+			return mwm_video_card( $c );
+		}
+		return '';
+	}
+
+	/**
+	 * GET /worksheets — paged, optional render=1 for card HTML.
+	 */
+	public static function get_worksheets( WP_REST_Request $r ): WP_REST_Response {
+		$result = mwm_query_worksheets_paged( [
+			'level'    => sanitize_key( (string) $r->get_param( 'level' ) ),
+			'topic'    => sanitize_title( (string) $r->get_param( 'topic' ) ),
+			'subtopic' => sanitize_title( (string) $r->get_param( 'subtopic' ) ),
+			'search'   => sanitize_text_field( (string) $r->get_param( 'search' ) ),
+			'per_page' => min( 48, max( 1, (int) ( $r->get_param( 'per_page' ) ?: 24 ) ) ),
+			'page'     => max( 1, (int) ( $r->get_param( 'page' ) ?: 1 ) ),
+		] );
+		$html = [];
+		if ( $r->get_param( 'render' ) && function_exists( 'mwm_worksheet_card' ) ) {
+			foreach ( $result['items'] as $w ) {
+				$html[] = mwm_worksheet_card( $w );
+			}
+		}
+		$result['items'] = array_map( static function ( $w ) {
+			unset( $w['lesson'] );
+			if ( $w['pdf'] ) {
+				$w['pdf'] = [ 'url' => $w['pdf']['url'], 'label' => $w['pdf']['label'] ];
+			}
+			if ( $w['answers'] ) {
+				$w['answers'] = [ 'url' => $w['answers']['url'], 'label' => $w['answers']['label'] ];
+			}
+			return $w;
+		}, $result['items'] );
+		$result['html'] = $html;
+		return rest_ensure_response( $result );
 	}
 
 	public static function public_card( array $c ): array {
@@ -269,7 +334,7 @@ class MWM_REST {
 			} elseif ( $existing ) {
 				wp_trash_post( $existing->ID );
 			}
-			delete_post_meta( $id, '_mwm_quiz_id' );
+			mwm_reindex_lesson_quiz( $id );
 		}
 		return rest_ensure_response( mwm_lesson_card( $id ) );
 	}
