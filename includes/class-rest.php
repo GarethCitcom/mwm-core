@@ -535,8 +535,21 @@ class MWM_REST {
 				delete_post_meta( $id, 'mark_scheme' );
 			}
 		}
+		// "Practise what came up": existing worksheet pages by ID, plus any new revision worksheet PDFs (each becomes its own page).
 		if ( isset( $p['worksheets'] ) && is_array( $p['worksheets'] ) ) {
-			update_post_meta( $id, 'worksheets', array_map( 'intval', $p['worksheets'] ) );
+			$ws_ids = array_values( array_filter( array_map( 'intval', $p['worksheets'] ), static fn( $w ) => get_post_type( $w ) === 'mwm_worksheet' ) );
+			$label  = mwm_board_name( $board ) . " $season $year Paper $num " . ucfirst( $tier );
+			foreach ( (array) ( $p['worksheet_pdfs'] ?? [] ) as $pdf_id ) {
+				$pdf_id = (int) $pdf_id;
+				if ( $pdf_id && get_post_type( $pdf_id ) === 'attachment' ) {
+					$ws_id = mwm_upsert_worksheet( 0, $pdf_id, 0, "$label revision worksheet" );
+					if ( $ws_id ) {
+						wp_set_object_terms( $ws_id, $tier === 'foundation' ? 'gcse-foundation' : 'gcse-higher', 'mwm_level' );
+						$ws_ids[] = $ws_id;
+					}
+				}
+			}
+			update_post_meta( $id, 'worksheets', array_values( array_unique( $ws_ids ) ) );
 		}
 		return rest_ensure_response( mwm_past_paper_data( $id ) );
 	}

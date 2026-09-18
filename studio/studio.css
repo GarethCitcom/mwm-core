@@ -974,3 +974,37 @@ html[data-theme="dark"] .mwm-tag--warn {
 	color: #F5C77A;
 	border-color: #5C4220;
 }
+
+/* Past paper worksheet links */
+.st-chips--12 {
+	margin-top: 12px;
+}
+.st-chip--static {
+	cursor: default;
+	padding-right: 6px;
+}
+.st-chip__x {
+	margin-left: 8px;
+	width: 24px;
+	height: 24px;
+	border: 0;
+	border-radius: 50%;
+	background: transparent;
+	color: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	line-height: 1;
+}
+.st-chip__x:hover {
+	background: rgba(0, 0, 0, 0.08);
+}
+.st-label--12 {
+	margin-top: 12px;
+}
+.st-picker__hint {
+	margin-left: auto;
+	font-size: 13px;
+	font-weight: 400;
+	color: var(--muted);
+	white-space: nowrap;
+}
