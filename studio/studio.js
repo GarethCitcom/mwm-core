@@ -91,6 +91,10 @@
 	function freshLesson() {
 		return { id: 0, step: 1, yt: '', video: null, videoError: '', finding: false, level: 'gcse-higher', topic: 'algebra', subtopic: '', ws: null, ans: null, quizText: '', quizResult: null, quizImages: {}, copied: false, publishing: false, published: null, editingTitle: '', publishError: '' };
 	}
+	function freshPaper(keep) {
+		var now = new Date();
+		return { id: 0, board: keep.board || 'edexcel', season: keep.season || (now.getMonth() >= 5 ? 'June' : 'November'), year: keep.year || (now.getMonth() >= 5 ? now.getFullYear() : now.getFullYear() - 1), tier: keep.tier || 'higher', paper: '1', qp: null, ms: null, published: null, publishing: false, error: '', editingTitle: '' };
+	}
 	function freshWorksheet() {
 		return { id: 0, title: '', level: 'gcse-foundation', topic: 'number', subtopic: '', pdf: null, ans: null, desc: '', published: null, publishing: false, error: '', editingTitle: '' };
 	}
@@ -99,7 +103,7 @@
 		playlists: B.playlists, sync: B.sync, synced: false, syncing: false, recent: B.recent,
 		content: B.content, kindFilter: 'All', issueFilter: '', confirmId: null, lastDeleted: null,
 		lesson: freshLesson(),
-		pp: { id: 0, series: B.series[0], tier: 'higher', paper: '1', qp: null, ms: null, published: null, publishing: false, error: '', editingTitle: '' },
+		pp: freshPaper({}),
 		ws: freshWorksheet(),
 		ed: { paper: 'Paper 1 (non-calculator)', date: '', session: 'morning', level: 'gcse-higher', board: 'edexcel', checked: false, saving: false, error: '', dateConfirm: null },
 		dates: B.dates
@@ -309,7 +313,13 @@
 				'<div class="st-success__actions"><a href="' + esc(B.urls.pastPapers) + '" class="mwm-btn mwm-btn--primary">See the past papers page</a><button type="button" class="mwm-btn mwm-btn--secondary" data-reset-pp>Upload another</button></div></div>';
 			return html;
 		}
-		html += '<div class="st-panel"><div class="st-label" style="margin-top:0">1 · Which exam is it from?</div><div class="st-chips">' + B.series.map(function (s) { return chip(s, P.series === s, { series: s }); }).join('') + '</div>' +
+		var thisYear = new Date().getFullYear();
+		var years = [];
+		for (var y = thisYear + 1; y >= 2015; y--) { years.push(y); }
+		html += '<div class="st-panel"><div class="st-label" style="margin-top:0">1 · Which exam is it from?</div>' +
+			'<div class="st-chips">' + Object.keys(B.boards).map(function (b) { return chip(B.boards[b], P.board === b, { ppboard: b }); }).join('') + '</div>' +
+			'<div class="st-fields" style="margin-top:16px"><label class="st-field">Exam month<select class="mwm-select" data-pp="season">' + ['June', 'November'].map(function (s) { return '<option value="' + s + '"' + (P.season === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></label>' +
+			'<label class="st-field">Year<select class="mwm-select" data-pp="year">' + years.map(function (yy) { return '<option value="' + yy + '"' + (Number(P.year) === yy ? ' selected' : '') + '>' + yy + '</option>'; }).join('') + '</select></label></div>' +
 			'<div class="st-groups"><div><div class="st-label" style="margin-top:0">Tier</div><div class="st-chips">' + chip('Foundation', P.tier === 'foundation', { tier: 'foundation' }) + chip('Higher', P.tier === 'higher', { tier: 'higher' }) + '</div></div>' +
 			'<div><div class="st-label" style="margin-top:0">Paper</div><div class="st-chips">' + ['1', '2', '3'].map(function (n) { return chip('Paper ' + n, P.paper === n, { paper: n }); }).join('') + '</div></div></div>' +
 			'<div class="st-label st-label--28">2 · Add the PDFs</div>' +
@@ -444,8 +454,7 @@
 			}).catch(function (e) { root.classList.remove('st-busy'); toast(e.message); });
 		} else if (it.kind === 'Past paper') {
 			var d = it.data;
-			S.pp = { id: it.id, series: d.series, tier: d.tier, paper: String(d.paper), qp: d.qp ? { id: 0, filename: 'current question paper', keep: true } : null, ms: d.ms ? { id: 0, filename: 'current mark scheme', keep: true } : null, published: null, publishing: false, error: '', editingTitle: it.title };
-			if (B.series.indexOf(d.series) === -1) { B.series.unshift(d.series); }
+			S.pp = { id: it.id, board: d.board || 'edexcel', season: d.season, year: d.year, tier: d.tier, paper: String(d.paper), qp: d.qp ? { id: 0, filename: 'current question paper', keep: true } : null, ms: d.ms ? { id: 0, filename: 'current mark scheme', keep: true } : null, published: null, publishing: false, error: '', editingTitle: it.title };
 			go('papers');
 		} else {
 			go('dates');
@@ -518,7 +527,8 @@
 			root.classList.add('st-busy');
 			upload(img, 'image').then(function (info) { root.classList.remove('st-busy'); L.quizImages[idx] = info; render(); })
 				.catch(function (err) { root.classList.remove('st-busy'); toast(err.message); });
-		} else if (el.matches('[data-ed="paper"]')) { S.ed.paper = el.value; }
+		} else if (el.matches('[data-pp]')) { S.pp[el.getAttribute('data-pp')] = el.value; }
+		else if (el.matches('[data-ed="paper"]')) { S.ed.paper = el.value; }
 		else if (el.matches('[data-ed="checked"]')) { S.ed.checked = el.checked; S.ed.error = ''; render(); }
 	});
 	root.addEventListener('click', function (e) {
@@ -585,23 +595,22 @@
 		}
 		if ((el = e.target.closest('[data-reset-ws]'))) { S.ws = freshWorksheet(); render(); return; }
 		// Past papers
-		if ((el = e.target.closest('[data-series]'))) { P.series = el.getAttribute('data-series'); render(); return; }
+		if ((el = e.target.closest('[data-ppboard]'))) { P.board = el.getAttribute('data-ppboard'); render(); return; }
 		if ((el = e.target.closest('[data-tier]'))) { P.tier = el.getAttribute('data-tier'); render(); return; }
 		if ((el = e.target.closest('[data-paper]'))) { P.paper = el.getAttribute('data-paper'); render(); return; }
 		if ((el = e.target.closest('[data-publish-pp]'))) {
 			P.publishing = true; P.error = ''; render();
-			var parts = P.series.split(' ');
-			var body = { id: P.id, board: 'edexcel', tier: P.tier, season: parts[0], year: Number(parts[1]), paper: Number(P.paper) };
+			var body = { id: P.id, board: P.board, tier: P.tier, season: P.season, year: Number(P.year), paper: Number(P.paper) };
 			if (P.qp && !P.qp.keep) { body.question_paper = P.qp.id; }
 			if (!P.ms) { body.mark_scheme = 0; } else if (!P.ms.keep) { body.mark_scheme = P.ms.id; }
 			api('studio/past-papers', { method: 'POST', body: body }).then(function (d) {
 				P.publishing = false;
-				P.published = { summary: P.series + ' · ' + (P.tier === 'higher' ? 'Higher' : 'Foundation') + ' · Paper ' + P.paper + (d.ms ? ' with its mark scheme' : ' — mark scheme still to come, the site says so for you') };
+				P.published = { summary: B.boards[P.board] + ' · ' + P.season + ' ' + P.year + ' · ' + (P.tier === 'higher' ? 'Higher' : 'Foundation') + ' · Paper ' + P.paper + (d.ms ? ' with its mark scheme' : ' — mark scheme still to come, the site says so for you') };
 				refreshContent(); render();
 			}).catch(function (err) { P.publishing = false; P.error = err.message; render(); });
 			return;
 		}
-		if ((el = e.target.closest('[data-reset-pp]'))) { S.pp = { id: 0, series: B.series[0], tier: P.tier, paper: '1', qp: null, ms: null, published: null, publishing: false, error: '', editingTitle: '' }; render(); return; }
+		if ((el = e.target.closest('[data-reset-pp]'))) { S.pp = freshPaper({ board: P.board, tier: P.tier, season: P.season, year: P.year }); render(); return; }
 		// Exam dates
 		if ((el = e.target.closest('[data-session]'))) { E.session = el.getAttribute('data-session'); render(); return; }
 		if ((el = e.target.closest('[data-edlevel]'))) { E.level = el.getAttribute('data-edlevel'); render(); return; }
