@@ -182,8 +182,8 @@
 			html += '<div class="st-panel"><h2>Add the practice bits (optional)</h2><p class="st-panel__sub">Skip anything that isn’t ready — the site never shows an empty button, just a friendly “not yet” note.</p>' +
 				fileRow('Worksheet PDF', L.ws ? '✓ ' + L.ws.filename + ' added — it gets its own worksheet page too' : 'No worksheet yet — students will see a friendly note instead of a button.', !!L.ws, 'ws', 'st-filerow--first') +
 				fileRow('Worked answers PDF', L.ans ? '✓ ' + L.ans.filename + ' added' : 'Optional — appears behind “Reveal answers”.', !!L.ans, 'ans', '') +
-				'<div class="st-quiz"><div class="st-filerow__label">Quiz <span>(optional)</span></div><div class="st-quiz__sub">Ask ChatGPT to write one for you: copy the instructions below, swap in your topic, then paste back what it gives you.</div>' +
-				'<div class="st-prompt"><div class="st-prompt__head"><span class="st-prompt__title">Instructions for ChatGPT</span><button type="button" class="st-copy" data-copy>' + (L.copied ? '✓ Copied' : 'Copy') + '</button></div><div class="st-prompt__text">' + esc(B.prompt) + '</div></div>' +
+				'<div class="st-quiz"><div class="st-filerow__label">Quiz <span>(optional)</span></div><div class="st-quiz__sub">Ask ChatGPT to write one for you: copy the instructions below — they’re already filled in for this lesson — then paste back what it gives you.</div>' +
+				'<div class="st-prompt"><div class="st-prompt__head"><span class="st-prompt__title">Instructions for ChatGPT</span><button type="button" class="st-copy" data-copy>' + (L.copied ? '✓ Copied' : 'Copy') + '</button></div><div class="st-prompt__text">' + esc(quizPrompt()) + '</div></div>' +
 				'<textarea class="st-textarea" rows="5" placeholder="Paste ChatGPT’s answer here — it starts with { and ends with }" aria-label="Quiz JSON" data-quiz-text>' + esc(L.quizText) + '</textarea>' +
 				'<div class="st-actions"><button type="button" class="mwm-btn mwm-btn--primary st-btn-check" data-check-quiz>Check my quiz</button><label class="st-textlink"><input type="file" accept=".json,application/json" data-quiz-file>…or upload the .json file</label></div>';
 			if (L.quizResult && L.quizResult.ok) {
@@ -524,6 +524,19 @@
 	function go(view) { S.view = view; window.scrollTo(0, 0); render(); }
 
 	/* ---------------------------------------------------------------- actions */
+	/* The ChatGPT quiz prompt, with the first line filled in from what Kym chose in steps 1–2. */
+	function quizPrompt() {
+		var L = S.lesson;
+		var lines = B.prompt.split('\n');
+		var level = levelName(L.level) || 'GCSE';
+		var topic = topicName(L.topic);
+		var sub = L.subtopic ? topicName(L.subtopic) : '';
+		var title = L.video ? L.video.title : '';
+		var where = topic ? ' (topic: ' + topic + (sub ? ' · ' + sub : '') + ')' : '';
+		lines[0] = 'Write a 5-question ' + (level === 'A-level' ? 'A-level' : 'GCSE') + ' maths quiz for ' + level + ' students' +
+			(title ? ' based on my lesson “' + title + '”' + where + '. Only test what that lesson covers.' : (topic ? ' about ' + topic + (sub ? ' · ' + sub : '') + '.' : ' about [YOUR TOPIC].'));
+		return lines.join('\n');
+	}
 	function findVideo(url, then) {
 		var L = S.lesson;
 		L.yt = url; L.videoError = ''; L.video = null; L.finding = true; render();
@@ -807,7 +820,7 @@
 		if ((el = e.target.closest('[data-level]'))) { L.level = el.getAttribute('data-level'); render(); return; }
 		if ((el = e.target.closest('[data-topic]'))) { L.topic = el.getAttribute('data-topic'); L.subtopic = ''; render(); return; }
 		if ((el = e.target.closest('[data-copy]'))) {
-			try { navigator.clipboard.writeText(B.prompt); } catch (err) {}
+			try { navigator.clipboard.writeText(quizPrompt()); } catch (err) {}
 			L.copied = true; render(); return;
 		}
 		if ((el = e.target.closest('[data-check-quiz]'))) { checkQuiz(root.querySelector('[data-quiz-text]').value); return; }
