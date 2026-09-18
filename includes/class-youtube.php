@@ -181,6 +181,7 @@ class MWM_YouTube {
 	public static function daily(): void {
 		self::sync_all();
 		self::check_videos();
+		self::scan_channel();
 	}
 
 	/**
@@ -438,29 +439,39 @@ class MWM_YouTube {
 	 * Best-effort level and topic from the video's title, tags and description via topic keyword meta.
 	 */
 	public static function auto_tag( int $post_id, array $data ): void {
-		$hay = strtolower( $data['title'] . ' ' . implode( ' ', $data['tags'] ) . ' ' . substr( $data['description'], 0, 400 ) );
-		if ( ! has_term( '', 'mwm_level', $post_id ) ) {
-			if ( preg_match( '/\ba[- ]?level\b/', $hay ) ) {
-				wp_set_object_terms( $post_id, 'a-level', 'mwm_level' );
-			} elseif ( str_contains( $hay, 'higher' ) ) {
-				wp_set_object_terms( $post_id, 'gcse-higher', 'mwm_level' );
-			} elseif ( str_contains( $hay, 'foundation' ) ) {
-				wp_set_object_terms( $post_id, 'gcse-foundation', 'mwm_level' );
-			}
+		$guess = self::guess_tags( $data );
+		if ( $guess['level'] && ! has_term( '', 'mwm_level', $post_id ) ) {
+			wp_set_object_terms( $post_id, $guess['level'], 'mwm_level' );
 		}
-		if ( has_term( '', 'mwm_topic', $post_id ) ) {
-			return;
+		if ( $guess['topic_id'] && ! has_term( '', 'mwm_topic', $post_id ) ) {
+			wp_set_object_terms( $post_id, $guess['topic_id'], 'mwm_topic' );
 		}
+	}
+
+	/**
+	 * Guess level and topic from a video's title, tags and description. Used by the sync and by lesson suggestions.
+	 */
+	public static function guess_tags( array $data ): array {
+		$hay   = strtolower( ( $data['title'] ?? '' ) . ' ' . implode( ' ', (array) ( $data['tags'] ?? [] ) ) . ' ' . mb_substr( (string) ( $data['description'] ?? '' ), 0, 400 ) );
+		$level = '';
+		if ( preg_match( '/\ba[- ]?level\b/', $hay ) ) {
+			$level = 'a-level';
+		} elseif ( str_contains( $hay, 'higher' ) ) {
+			$level = 'gcse-higher';
+		} elseif ( str_contains( $hay, 'foundation' ) ) {
+			$level = 'gcse-foundation';
+		}
+		$out   = [ 'level' => $level, 'topic_id' => 0, 'topic' => '', 'topic_name' => '' ];
 		$terms = get_terms( [ 'taxonomy' => 'mwm_topic', 'hide_empty' => false ] );
 		if ( is_wp_error( $terms ) ) {
-			return;
+			return $out;
 		}
 		$best   = null;
 		$best_n = 0;
 		foreach ( $terms as $t ) {
-			$keywords = array_filter( array_map( 'trim', explode( ',', strtolower( (string) get_term_meta( $t->term_id, 'keywords', true ) ) ) ) );
+			$keywords   = array_filter( array_map( 'trim', explode( ',', strtolower( (string) get_term_meta( $t->term_id, 'keywords', true ) ) ) ) );
 			$keywords[] = strtolower( $t->name );
-			$hits = 0;
+			$hits       = 0;
 			foreach ( $keywords as $kw ) {
 				if ( $kw !== '' && str_contains( $hay, $kw ) ) {
 					$hits += strlen( $kw ) > 4 ? 2 : 1;
@@ -472,8 +483,213 @@ class MWM_YouTube {
 			}
 		}
 		if ( $best ) {
-			wp_set_object_terms( $post_id, (int) $best->term_id, 'mwm_topic' );
+			$out['topic_id']   = (int) $best->term_id;
+			$out['topic']      = $best->slug;
+			$out['topic_name'] = wp_specialchars_decode( $best->name );
+			$out['subtopic']   = '';
+			if ( $best->parent ) { // A subtopic matched: the wizard wants its parent as the topic.
+				$parent = get_term( $best->parent, 'mwm_topic' );
+				if ( $parent && ! is_wp_error( $parent ) ) {
+					$out['subtopic']   = $best->slug;
+					$out['topic']      = $parent->slug;
+					$out['topic_name'] = wp_specialchars_decode( $parent->name ) . ' · ' . wp_specialchars_decode( $best->name );
+				}
+			}
 		}
+		return $out;
+	}
+
+	/* ---------------------------------------------------------------
+	 * Channel scan → lesson suggestions
+	 * ------------------------------------------------------------ */
+
+	public const SCAN    = 'mwm_channel_scan';
+	public const IGNORED = 'mwm_ignored_videos';
+
+	/**
+	 * The channel handle/ID from the URL in settings: "@mathswithmelissa" or "UC…".
+	 */
+	private static function channel_ref(): array {
+		$path = trim( (string) wp_parse_url( mwm_youtube_channel_url(), PHP_URL_PATH ), '/' );
+		if ( preg_match( '~^@([\w.\-]+)~', $path, $m ) ) {
+			return [ 'forHandle' => $m[1] ];
+		}
+		if ( preg_match( '~^channel/(UC[\w\-]+)~', $path, $m ) ) {
+			return [ 'id' => $m[1] ];
+		}
+		if ( preg_match( '~^(?:c|user)/([\w.\-]+)~', $path, $m ) ) {
+			return [ 'forUsername' => $m[1] ];
+		}
+		return [ 'forHandle' => $path ?: 'mathswithmelissa' ];
+	}
+
+	/**
+	 * List every public/unlisted upload on the channel (about 15 API units for 500 videos) and store it.
+	 */
+	public static function scan_channel(): array|WP_Error {
+		if ( ! self::api_key() ) {
+			return new WP_Error( 'mwm_no_key', 'No YouTube Data API key is set.' );
+		}
+		$ch = self::api_get( 'channels', [ 'part' => 'contentDetails,snippet' ] + self::channel_ref() );
+		if ( is_wp_error( $ch ) ) {
+			return $ch;
+		}
+		if ( empty( $ch['items'][0] ) ) {
+			return new WP_Error( 'mwm_no_channel', 'The channel in Settings → Maths with Melissa couldn’t be found on YouTube.' );
+		}
+		$uploads = (string) ( $ch['items'][0]['contentDetails']['relatedPlaylists']['uploads'] ?? '' );
+		$ids     = [];
+		$token   = '';
+		do {
+			$params = [ 'part' => 'contentDetails', 'playlistId' => $uploads, 'maxResults' => 50 ];
+			if ( $token ) {
+				$params['pageToken'] = $token;
+			}
+			$body = self::api_get( 'playlistItems', $params );
+			if ( is_wp_error( $body ) ) {
+				return $body;
+			}
+			foreach ( (array) ( $body['items'] ?? [] ) as $item ) {
+				$ids[] = (string) ( $item['contentDetails']['videoId'] ?? '' );
+			}
+			$token = (string) ( $body['nextPageToken'] ?? '' );
+		} while ( $token );
+
+		$videos = [];
+		foreach ( array_chunk( array_filter( array_unique( $ids ) ), 50 ) as $chunk ) {
+			$body = self::api_get( 'videos', [ 'part' => 'snippet,contentDetails,status', 'id' => implode( ',', $chunk ), 'maxResults' => 50 ] );
+			if ( is_wp_error( $body ) ) {
+				return $body;
+			}
+			foreach ( (array) ( $body['items'] ?? [] ) as $item ) {
+				$privacy = (string) ( $item['status']['privacyStatus'] ?? 'public' );
+				if ( $privacy === 'private' || ( $item['status']['uploadStatus'] ?? 'processed' ) !== 'processed' ) {
+					continue;
+				}
+				$d = self::normalise_item( $item );
+				$videos[ $d['id'] ] = [
+					'title'     => $d['title'],
+					'seconds'   => $d['seconds'],
+					'thumbnail' => $d['thumbnail'],
+					'published' => $d['published'],
+					'privacy'   => $privacy,
+					'tags'      => array_slice( $d['tags'], 0, 20 ),
+					'blurb'     => mb_substr( $d['description'], 0, 400 ),
+				];
+			}
+		}
+		$scan = [ 'at' => time(), 'channel' => (string) ( $ch['items'][0]['snippet']['title'] ?? '' ), 'total' => count( $videos ), 'videos' => $videos ];
+		update_option( self::SCAN, $scan, false );
+		return $scan;
+	}
+
+	/**
+	 * Channel videos that aren't on the site yet, split into live suggestions and ones Kym has hidden.
+	 * Lessons in any status count as "on the site"; trashed ones count as removed on purpose.
+	 */
+	public static function suggestions(): array {
+		$scan    = (array) get_option( self::SCAN, [] );
+		$ignored = (array) get_option( self::IGNORED, [] );
+		$videos  = (array) ( $scan['videos'] ?? [] );
+		global $wpdb;
+		$on_site = $videos ? $wpdb->get_col( "SELECT pm.meta_value FROM {$wpdb->postmeta} pm JOIN {$wpdb->posts} p ON p.ID = pm.post_id WHERE pm.meta_key = 'youtube_id' AND p.post_type = 'mwm_lesson' AND p.post_status <> 'auto-draft'" ) : [];
+		$on_site = array_flip( array_filter( $on_site ) );
+		$items   = [];
+		$hidden  = [];
+		foreach ( $videos as $id => $v ) {
+			if ( isset( $on_site[ $id ] ) ) {
+				continue;
+			}
+			$guess = self::guess_tags( [ 'title' => $v['title'], 'tags' => $v['tags'] ?? [], 'description' => $v['blurb'] ?? '' ] );
+			$row   = [
+				'id'              => $id,
+				'title'           => self::clean_title( $v['title'] ),
+				'seconds'         => (int) $v['seconds'],
+				'duration_label'  => mwm_duration_label( (int) $v['seconds'], (int) $v['seconds'] <= 180 ? 'short' : 'lesson' ),
+				'is_short'        => (int) $v['seconds'] > 0 && (int) $v['seconds'] <= 180,
+				'thumbnail'       => $v['thumbnail'],
+				'published'       => $v['published'],
+				'published_label' => $v['published'] ? mwm_relative_label( $v['published'] . ' 09:00:00' ) : '',
+				'unlisted'        => ( $v['privacy'] ?? 'public' ) === 'unlisted',
+				'level'           => $guess['level'],
+				'level_name'      => $guess['level'] ? mwm_level_name( $guess['level'] ) : '',
+				'topic'           => $guess['topic'],
+				'subtopic'        => $guess['subtopic'] ?? '',
+				'topic_name'      => $guess['topic_name'],
+				'url'             => mwm_youtube_watch_url( $id ),
+			];
+			if ( isset( $ignored[ $id ] ) ) {
+				$hidden[] = $row;
+			} else {
+				$items[] = $row;
+			}
+		}
+		$by_date = static fn( $a, $b ) => strcmp( $b['published'], $a['published'] );
+		usort( $items, $by_date );
+		usort( $hidden, $by_date );
+		return [
+			'scanned_at'    => (int) ( $scan['at'] ?? 0 ),
+			'scanned_label' => ! empty( $scan['at'] ) ? self::relative_run_label( (int) $scan['at'] ) : 'Not scanned yet',
+			'channel'       => (string) ( $scan['channel'] ?? '' ),
+			'total'         => (int) ( $scan['total'] ?? 0 ),
+			'items'         => $items,
+			'hidden'        => $hidden,
+		];
+	}
+
+	/**
+	 * Hide a suggestion for good (or bring it back with $undo).
+	 */
+	public static function ignore_video( string $id, bool $undo = false ): void {
+		$ignored = (array) get_option( self::IGNORED, [] );
+		if ( $undo ) {
+			unset( $ignored[ $id ] );
+		} else {
+			$ignored[ $id ] = time();
+		}
+		update_option( self::IGNORED, $ignored, false );
+	}
+
+	/**
+	 * Put a channel video on the site directly: as a Quick Maths short, or as a draft lesson to finish later.
+	 */
+	public static function create_from_video( string $id, string $format = 'lesson', string $status = 'draft' ): int|WP_Error {
+		$id = mwm_youtube_id( $id );
+		if ( ! $id ) {
+			return new WP_Error( 'mwm_bad_id', 'That video ID doesn’t look right.' );
+		}
+		$existing = get_posts( [ 'post_type' => 'mwm_lesson', 'post_status' => 'any', 'posts_per_page' => 1, 'fields' => 'ids', 'no_found_rows' => true, 'meta_key' => 'youtube_id', 'meta_value' => $id ] );
+		if ( $existing ) {
+			return (int) $existing[0];
+		}
+		$d = self::video_details( $id );
+		if ( is_wp_error( $d ) ) {
+			return $d;
+		}
+		$post_id = (int) wp_insert_post( [
+			'post_type'    => 'mwm_lesson',
+			'post_status'  => $status === 'publish' ? 'publish' : 'draft',
+			'post_title'   => self::clean_title( $d['title'] ),
+			'post_content' => wp_kses_post( wpautop( esc_html( $d['description'] ) ) ),
+			'post_date'    => $d['published'] ? $d['published'] . ' 09:00:00' : current_time( 'mysql' ),
+		] );
+		if ( ! $post_id ) {
+			return new WP_Error( 'mwm_insert', 'The lesson couldn’t be created.' );
+		}
+		update_post_meta( $post_id, 'youtube_id', $id );
+		update_post_meta( $post_id, 'youtube_url', mwm_youtube_watch_url( $id ) );
+		update_post_meta( $post_id, 'synced_title', self::clean_title( $d['title'] ) );
+		update_post_meta( $post_id, 'duration_seconds', $d['seconds'] );
+		update_post_meta( $post_id, 'thumbnail_url', $d['thumbnail'] );
+		update_post_meta( $post_id, 'yt_published', $d['published'] );
+		update_post_meta( $post_id, 'video_status', 'ok' );
+		wp_set_object_terms( $post_id, $format === 'short' ? 'short' : 'lesson', 'mwm_format' );
+		self::auto_tag( $post_id, $d );
+		if ( ! has_term( '', 'mwm_level', $post_id ) ) {
+			wp_set_object_terms( $post_id, 'gcse-foundation', 'mwm_level' );
+			update_post_meta( $post_id, 'needs_level_review', 1 );
+		}
+		return $post_id;
 	}
 
 	/**

@@ -627,7 +627,7 @@ function mwm_query_lessons( array $args = [] ): array {
  * Paged lesson query. Returns ['items' => cards, 'total' => int, 'pages' => int, 'page' => int, 'per_page' => int].
  */
 function mwm_query_lessons_paged( array $args = [] ): array {
-	$defaults = [ 'level' => '', 'topic' => '', 'subtopic' => '', 'format' => '', 'theme' => '', 'worksheet' => false, 'quiz' => false, 'search' => '', 'per_page' => -1, 'page' => 1, 'exclude' => [], 'orderby' => 'date', 'order' => 'DESC', 'include' => [] ];
+	$defaults = [ 'level' => '', 'topic' => '', 'subtopic' => '', 'format' => '', 'theme' => '', 'worksheet' => false, 'quiz' => false, 'search' => '', 'per_page' => -1, 'page' => 1, 'exclude' => [], 'orderby' => 'date', 'order' => 'DESC', 'include' => [], 'status' => 'publish' ];
 	$a        = array_merge( $defaults, $args );
 	$tax      = [];
 	if ( $a['level'] ) {
@@ -649,7 +649,7 @@ function mwm_query_lessons_paged( array $args = [] ): array {
 	$paged = (int) $a['per_page'] > 0;
 	$q = [
 		'post_type'      => 'mwm_lesson',
-		'post_status'    => 'publish',
+		'post_status'    => $a['status'],
 		'posts_per_page' => $a['per_page'],
 		'paged'          => max( 1, (int) $a['page'] ),
 		'orderby'        => $a['orderby'],

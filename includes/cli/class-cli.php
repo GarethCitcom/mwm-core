@@ -755,6 +755,21 @@ class MWM_CLI {
 	}
 
 	/**
+	 * Scan the YouTube channel's uploads and report which videos aren't on the site yet (feeds the Studio's suggestions).
+	 *
+	 * @subcommand scan-channel
+	 * @when after_wp_load
+	 */
+	public function scan_channel( array $args, array $assoc ): void {
+		$scan = MWM_YouTube::scan_channel();
+		if ( is_wp_error( $scan ) ) {
+			WP_CLI::error( $scan->get_error_message() );
+		}
+		$s = MWM_YouTube::suggestions();
+		WP_CLI::success( sprintf( '%s: %d videos on the channel, %d not on the site yet (%d hidden by Kym).', $scan['channel'], $scan['total'], count( $s['items'] ), count( $s['hidden'] ) ) );
+	}
+
+	/**
 	 * Ask YouTube whether every lesson's video is still public and playable; stores video_status on each lesson.
 	 *
 	 * @subcommand check-videos

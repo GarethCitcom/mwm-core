@@ -1205,3 +1205,102 @@ html[data-theme="dark"] .mwm-tag--warn {
 .st-notes__actions .st-smallbtn {
 	min-height: 36px;
 }
+
+/* Suggested lessons from the YouTube channel */
+.st-sg-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-top: 20px;
+}
+.st-sg-bar .mwm-linkbtn {
+	margin: 0;
+}
+.st-sg-bulk {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-top: 16px;
+	padding: 12px 16px;
+	border-radius: 12px;
+	background: var(--tint);
+	font-size: 14px;
+	line-height: 1.5;
+}
+.st-sg-bulk span {
+	flex: 1;
+	min-width: 240px;
+}
+.st-sg-list {
+	margin-top: 16px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--card);
+	overflow: hidden;
+}
+.st-sg {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 14px 16px;
+	border-top: 1px solid var(--border);
+	flex-wrap: wrap;
+}
+.st-sg:first-child {
+	border-top: 0;
+}
+.st-sg.is-busy {
+	opacity: 0.5;
+	pointer-events: none;
+}
+.st-sg__thumb {
+	position: relative;
+	flex-shrink: 0;
+	width: 128px;
+	aspect-ratio: 16 / 9;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+	background: var(--tint) center / cover no-repeat;
+}
+.st-sg__len {
+	position: absolute;
+	right: 6px;
+	bottom: 6px;
+	padding: 2px 6px;
+	border-radius: 6px;
+	background: rgba(23, 23, 23, 0.85);
+	color: #fff;
+	font-size: 12px;
+	font-weight: 600;
+}
+.st-sg__body {
+	flex: 1;
+	min-width: 220px;
+}
+.st-sg__title {
+	font-size: 16px;
+	font-weight: 600;
+	line-height: 1.4;
+}
+.st-sg__meta,
+.st-sg__guess {
+	margin-top: 2px;
+	font-size: 14px;
+	line-height: 1.5;
+	color: var(--muted);
+}
+.st-sg__guess strong {
+	color: var(--ink);
+	font-weight: 600;
+}
+.st-sg__actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.st-sg-hidden {
+	margin-top: 20px;
+}

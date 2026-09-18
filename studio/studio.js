@@ -107,6 +107,8 @@
 		pp: freshPaper({}),
 		pw: freshPathway(),
 		dismissed: B.dismissed || {},
+		suggestions: B.suggestions || { items: [], hidden: [], total: 0, scanned_label: '' },
+		sg: { filter: 'all', showHidden: false, confirmAll: false, busy: '', scanning: false, error: '' },
 		ws: freshWorksheet(),
 		ed: { paper: 'Paper 1 (non-calculator)', date: '', session: 'morning', level: 'gcse-higher', board: 'edexcel', checked: false, saving: false, error: '', dateConfirm: null },
 		dates: B.dates
@@ -132,10 +134,11 @@
 			'<p>Anything you add to these YouTube playlists appears on the site overnight, automatically. There’s nothing for you to do here.</p>' +
 			'<div class="st-list">' + S.playlists.map(function (pl) { return '<div class="st-list__row"><span class="st-list__name">' + esc(pl.name) + '</span><span class="st-list__meta">' + esc(pl.meta) + '</span></div>'; }).join('') +
 			'<div class="st-list__foot"><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-sync' + (S.syncing ? ' disabled' : '') + '>' + esc(syncLabel) + '</button>' + (S.sync && S.sync.error && !S.synced ? '<p class="st-error" style="margin-top:8px">' + esc(S.sync.error) + '</p>' : '') + '</div></div></div>' +
+			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('play') + '</span><div class="st-card__text"><h2>Suggested from YouTube</h2><p>' + esc((S.suggestions.items || []).length ? (S.suggestions.items.length === 1 ? '1 video on your channel isn’t on the site yet.' : S.suggestions.items.length + ' videos on your channel aren’t on the site yet.') : 'We check your channel overnight for videos that aren’t on the site.') + '</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="suggestions">See suggestions<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('route') + '</span><div class="st-card__text"><h2>Revision pathways</h2><p>The order students revise topics in, per level — with links to your lessons and an optional week-by-week plan.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="pathways">Edit pathways<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('calendar') + '</span><div class="st-card__text"><h2>Update exam dates</h2><p>Once a year, when the boards confirm them — verified dates appear on the exam calendar.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="dates">Update dates<span aria-hidden="true">→</span></button></div>' +
 			'<h2 class="st-h2">Recently added</h2>' +
-			'<div class="st-list st-list--12">' + (S.recent.length ? S.recent.map(function (r) { return '<div class="st-list__row"><span class="st-list__name" style="flex:1">' + esc(r.title) + '</span><span class="st-list__sub" style="margin:0;white-space:nowrap">' + esc(r.added) + '</span>' + tag('Live', 'mwm-tag--live') + '</div>'; }).join('') : '<div class="st-list__row"><span class="mwm-meta">Nothing added yet — your first lesson will show here.</span></div>') + '</div>' +
+			'<div class="st-list st-list--12">' + (S.recent.length ? S.recent.map(function (r) { return '<div class="st-list__row"><span class="st-list__name" style="flex:1">' + esc(r.title) + '</span><span class="st-list__sub" style="margin:0;white-space:nowrap">' + esc(r.added) + '</span>' + (r.status === 'draft' ? tag('Draft', 'mwm-tag--warn') : tag('Live', 'mwm-tag--live')) + '</div>'; }).join('') : '<div class="st-list__row"><span class="mwm-meta">Nothing added yet — your first lesson will show here.</span></div>') + '</div>' +
 			'<button type="button" class="mwm-linkbtn st-more" data-go="content">See and edit everything you’ve added<span aria-hidden="true">→</span></button>';
 	}
 
@@ -227,6 +230,7 @@
 	/* "Needs attention" filters per content kind; keys match the `flags` the REST API puts on each row. */
 	var ISSUES = {
 		Lessons: [
+			{ key: 'draft', label: 'Draft — not on the site yet', tag: 'Draft' },
 			{ key: 'level', label: 'Level needs checking', tag: 'Check level' },
 			{ key: 'no_worksheet', label: 'Missing worksheet', tag: 'No worksheet' },
 			{ key: 'no_answers', label: 'Missing worked answers', tag: 'No answers' },
@@ -242,7 +246,9 @@
 	};
 	/* Dashboard notifications: one per issue type, most urgent first. text(n) is the sentence Kym sees. */
 	var NOTIFS = [
+		{ key: 'suggested', view: 'suggestions', count: function () { return (S.suggestions.items || []).length; }, text: function (n) { return n === 1 ? '1 video on your YouTube channel isn’t on the site yet' : n + ' videos on your YouTube channel aren’t on the site yet'; } },
 		{ key: 'video', kind: 'Lessons', urgent: true, text: function (n) { return n === 1 ? '1 lesson has a video that’s missing or won’t play' : n + ' lessons have a video that’s missing or won’t play'; } },
+		{ key: 'draft', kind: 'Lessons', text: function (n) { return n === 1 ? '1 draft lesson is waiting to be finished and published' : n + ' draft lessons are waiting to be finished and published'; } },
 		{ key: 'level', kind: 'Lessons', text: function (n) { return n === 1 ? '1 lesson needs its level checking' : n + ' lessons need their level checking'; } },
 		{ key: 'no_worksheet', kind: 'Lessons', text: function (n) { return n === 1 ? '1 lesson has no worksheet' : n + ' lessons have no worksheet'; } },
 		{ key: 'no_answers', kind: 'Lessons', text: function (n) { return n === 1 ? '1 lesson worksheet has no worked answers' : n + ' lesson worksheets have no worked answers'; } },
@@ -253,7 +259,7 @@
 	var KIND_OF = { Lessons: 'Lesson', Worksheets: 'Worksheet', Pathways: 'Pathway' };
 	function notifCounts() {
 		return NOTIFS.map(function (n) {
-			var count = S.content.filter(function (it) { return it.kind === KIND_OF[n.kind] && (it.flags || []).indexOf(n.key) > -1; }).length;
+			var count = n.count ? n.count() : S.content.filter(function (it) { return it.kind === KIND_OF[n.kind] && (it.flags || []).indexOf(n.key) > -1; }).length;
 			var at = S.dismissed[n.key];
 			return { def: n, count: count, ignored: typeof at === 'number' && count <= at };
 		}).filter(function (x) { return x.count > 0; });
@@ -503,12 +509,13 @@
 			case 'papers': html = viewPapers(); break;
 			case 'dates': html = viewDates(); break;
 			case 'pathways': html = viewPathways(); break;
+			case 'suggestions': html = viewSuggestions(); break;
 			default: html = viewDash();
 		}
 		root.innerHTML = html;
 		document.querySelectorAll('[data-studio-nav] [data-view]').forEach(function (a) {
-			// Past papers, exam dates and pathways live off the dashboard, so keep Dashboard lit while on them.
-			var on = a.getAttribute('data-view') === S.view || (a.getAttribute('data-view') === 'dash' && (S.view === 'papers' || S.view === 'dates' || S.view === 'pathways'));
+			// Past papers, exam dates, pathways and suggestions live off the dashboard, so keep Dashboard lit while on them.
+			var on = a.getAttribute('data-view') === S.view || (a.getAttribute('data-view') === 'dash' && (S.view === 'papers' || S.view === 'dates' || S.view === 'pathways' || S.view === 'suggestions'));
 			a.classList.toggle('is-current', on);
 			if (on) { a.setAttribute('aria-current', 'page'); } else { a.removeAttribute('aria-current'); }
 		});
@@ -517,12 +524,74 @@
 	function go(view) { S.view = view; window.scrollTo(0, 0); render(); }
 
 	/* ---------------------------------------------------------------- actions */
-	function findVideo(url) {
+	function findVideo(url, then) {
 		var L = S.lesson;
 		L.yt = url; L.videoError = ''; L.video = null; L.finding = true; render();
 		api('studio/video?url=' + encodeURIComponent(url)).then(function (v) {
-			L.video = v; L.finding = false; render();
+			L.video = v; L.finding = false; if (then) { then(v); } render();
 		}).catch(function (e) { L.videoError = e.message; L.finding = false; render(); });
+	}
+
+	/* ---------------------------------------------------------------- suggested lessons (YouTube channel scan) */
+	function viewSuggestions() {
+		var G = S.sg, D = S.suggestions;
+		var items = D.items || [], hidden = D.hidden || [];
+		var shown = G.filter === 'lessons' ? items.filter(function (v) { return !v.is_short; }) : (G.filter === 'shorts' ? items.filter(function (v) { return v.is_short; }) : items);
+		var longCount = items.filter(function (v) { return !v.is_short; }).length;
+		function row(v, isHidden) {
+			var guess = [v.level_name, v.topic_name].filter(Boolean).join(' · ');
+			var meta = [v.duration_label, v.published_label ? 'uploaded ' + v.published_label : '', v.unlisted ? 'unlisted on YouTube' : ''].filter(Boolean).join(' · ');
+			var actions = isHidden
+				? '<button type="button" class="st-smallbtn st-smallbtn--quiet" data-sg-restore="' + esc(v.id) + '">Bring back</button>'
+				: (v.is_short
+					? '<button type="button" class="st-smallbtn" data-sg-short="' + esc(v.id) + '">Add to Quick Maths</button>'
+					: '<button type="button" class="st-smallbtn" data-sg-wizard="' + esc(v.id) + '">Add as a lesson</button>') +
+					'<button type="button" class="st-smallbtn st-smallbtn--quiet" data-sg-ignore="' + esc(v.id) + '" title="Never suggest this video again">Not for the site</button>';
+			return '<div class="st-sg' + (G.busy === v.id ? ' is-busy' : '') + '"><a href="' + esc(v.url) + '" target="_blank" rel="noopener" class="st-sg__thumb" style="background-image:url(' + esc(v.thumbnail) + ')" aria-label="Watch on YouTube"><span class="st-sg__len">' + esc(v.duration_label) + '</span></a>' +
+				'<div class="st-sg__body"><div class="st-sg__title">' + esc(v.title) + '</div><div class="st-sg__meta">' + esc(meta) + '</div>' +
+				(guess ? '<div class="st-sg__guess">Looks like <strong>' + esc(guess) + '</strong> — you can change it</div>' : '<div class="st-sg__guess">Couldn’t guess the level or topic — you’ll pick them</div>') + '</div>' +
+				'<div class="st-sg__actions">' + actions + '</div></div>';
+		}
+		var html = '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>' +
+			'<h1 class="st-h1 st-h1--after-back">Suggested from YouTube</h1>' +
+			'<p class="st-intro">Videos on your channel that aren’t on the website yet. Add the ones you want; “Not for the site” hides a video for good (you can bring it back from the hidden list).</p>' +
+			'<div class="st-sg-bar"><span class="mwm-meta">' + esc(D.scanned_label || 'Not scanned yet') + (D.total ? ' · ' + D.total + ' videos on the channel' : '') + '</span>' +
+			'<button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-sg-scan' + (G.scanning ? ' disabled' : '') + '>' + (G.scanning ? 'Scanning…' : 'Scan the channel now') + '</button></div>' +
+			(G.error ? '<p class="st-error">' + esc(G.error) + '</p>' : '');
+		if (!items.length && !hidden.length) {
+			return html + '<div class="st-list st-list--20"><div class="st-list__row"><span class="mwm-meta">' + (D.total ? 'Everything on your channel is on the site — nice.' : 'Scan the channel to see what’s not on the site yet.') + '</span></div></div>';
+		}
+		html += '<div class="st-chips st-chips--12">' + chip('All · ' + items.length, G.filter === 'all', { sgfilter: 'all' }) + chip('Lessons · ' + longCount, G.filter === 'lessons', { sgfilter: 'lessons' }) + chip('Shorts · ' + (items.length - longCount), G.filter === 'shorts', { sgfilter: 'shorts' }) + '</div>';
+		if (longCount > 1) {
+			html += '<div class="st-sg-bulk">' + (G.confirmAll
+				? '<span>Create ' + longCount + ' draft lessons? They won’t show on the site until you open each one and publish it.</span><button type="button" class="st-smallbtn" data-sg-addall>Yes, create the drafts</button><button type="button" class="st-smallbtn st-smallbtn--keep" data-sg-cancelall>Not now</button>'
+				: '<span>In a hurry? Add all ' + longCount + ' longer videos as <strong>draft</strong> lessons, then finish them one by one from Your content.</span><button type="button" class="st-smallbtn st-smallbtn--quiet" data-sg-askall>Add all as drafts</button>') + '</div>';
+		}
+		html += '<div class="st-sg-list">' + (shown.length ? shown.map(function (v) { return row(v, false); }).join('') : '<div class="st-list__row"><span class="mwm-meta">Nothing here.</span></div>') + '</div>';
+		if (hidden.length) {
+			html += '<div class="st-sg-hidden"><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-sg-togglehidden>' + (G.showHidden ? 'Hide the hidden videos' : hidden.length + (hidden.length === 1 ? ' video hidden · show it' : ' videos hidden · show them')) + '</button>' +
+				(G.showHidden ? '<div class="st-sg-list">' + hidden.map(function (v) { return row(v, true); }).join('') + '</div>' : '') + '</div>';
+		}
+		return html;
+	}
+	function sgApply(promise, doneMsg) {
+		var G = S.sg;
+		return promise.then(function (d) {
+			G.busy = ''; G.scanning = false; G.error = ''; G.confirmAll = false;
+			S.suggestions = { scanned_at: d.scanned_at, scanned_label: d.scanned_label, channel: d.channel, total: d.total, items: d.items, hidden: d.hidden };
+			if (doneMsg) { toast(typeof doneMsg === 'function' ? doneMsg(d) : doneMsg); }
+			render();
+		}).catch(function (err) { G.busy = ''; G.scanning = false; G.error = err.message; render(); });
+	}
+	function sgOpenWizard(v) {
+		var L = freshLesson();
+		var url = 'https://youtu.be/' + v.id;
+		L.yt = url;
+		if (v.level) { L.level = v.level; }
+		if (v.topic) { L.topic = v.topic; L.subtopic = v.subtopic || ''; }
+		S.lesson = L;
+		go('lesson');
+		findVideo(url, function () { L.step = 2; window.scrollTo(0, 0); });
 	}
 	function upload(file, kind) {
 		var fd = new FormData(); fd.append('file', file);
@@ -785,9 +854,22 @@
 		}
 		if ((el = e.target.closest('[data-reset-ws]'))) { S.ws = freshWorksheet(); render(); return; }
 		// Past papers
+		// Suggested lessons
+		var G = S.sg;
+		if ((el = e.target.closest('[data-sg-scan]'))) { G.scanning = true; G.error = ''; render(); sgApply(api('studio/suggestions/scan', { method: 'POST' }), function (d) { return d.items.length ? d.items.length + ' videos aren’t on the site yet' : 'Everything on the channel is on the site'; }); return; }
+		if ((el = e.target.closest('[data-sgfilter]'))) { G.filter = el.getAttribute('data-sgfilter'); render(); return; }
+		if ((el = e.target.closest('[data-sg-ignore]'))) { var ig = el.getAttribute('data-sg-ignore'); G.busy = ig; render(); sgApply(api('studio/suggestions/ignore', { method: 'POST', body: { id: ig } }), 'Hidden — it won’t be suggested again'); return; }
+		if ((el = e.target.closest('[data-sg-restore]'))) { var rs = el.getAttribute('data-sg-restore'); G.busy = rs; render(); sgApply(api('studio/suggestions/ignore', { method: 'POST', body: { id: rs, undo: true } }), 'Back in the suggestions'); return; }
+		if ((el = e.target.closest('[data-sg-short]'))) { var sh = el.getAttribute('data-sg-short'); G.busy = sh; render(); sgApply(api('studio/suggestions/add', { method: 'POST', body: { id: sh, as: 'short' } }), 'Added to Quick Maths — it’s live').then(refreshContent); return; }
+		if ((el = e.target.closest('[data-sg-wizard]'))) { var wv = (S.suggestions.items || []).filter(function (v) { return v.id === el.getAttribute('data-sg-wizard'); })[0]; if (wv) { sgOpenWizard(wv); } return; }
+		if ((el = e.target.closest('[data-sg-askall]'))) { G.confirmAll = true; render(); return; }
+		if ((el = e.target.closest('[data-sg-cancelall]'))) { G.confirmAll = false; render(); return; }
+		if ((el = e.target.closest('[data-sg-addall]'))) { G.scanning = true; render(); sgApply(api('studio/suggestions/add', { method: 'POST', body: { all: true } }), function (d) { return d.created + (d.created === 1 ? ' draft lesson created' : ' draft lessons created') + ' — find them under Your content'; }).then(refreshContent); return; }
+		if ((el = e.target.closest('[data-sg-togglehidden]'))) { G.showHidden = !G.showHidden; render(); return; }
 		// Dashboard notifications
 		if ((el = e.target.closest('[data-notif-go]'))) {
 			var nk = el.getAttribute('data-notif-go'), ndef = NOTIFS.filter(function (n) { return n.key === nk; })[0];
+			if (ndef && ndef.view) { go(ndef.view); return; }
 			S.kindFilter = ndef ? ndef.kind : 'All'; S.issueFilter = nk; S.confirmId = null; go('content'); return;
 		}
 		if ((el = e.target.closest('[data-notif-ignore]'))) {

@@ -49,6 +49,10 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/subtopics', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_create_subtopic' ] ] ) );
 		register_rest_route( $ns, '/studio/pathways', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_pathway' ] ] ) );
 		register_rest_route( $ns, '/studio/notifications', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_notifications' ] ] ) );
+		register_rest_route( $ns, '/studio/suggestions', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_suggestions' ] ] ) );
+		register_rest_route( $ns, '/studio/suggestions/scan', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_suggestions_scan' ] ] ) );
+		register_rest_route( $ns, '/studio/suggestions/ignore', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_suggestions_ignore' ] ] ) );
+		register_rest_route( $ns, '/studio/suggestions/add', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_suggestions_add' ] ] ) );
 		register_rest_route( $ns, '/studio/pathways/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_pathway' ] ] ) );
 		register_rest_route( $ns, '/studio/upload', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_upload' ] ] ) );
 		register_rest_route( $ns, '/studio/quiz/validate', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_validate_quiz' ] ] ) );
@@ -238,6 +242,62 @@ class MWM_REST {
 		$card['status']    = get_post_status( $id );
 		$card['content']   = get_post_field( 'post_content', $id );
 		return rest_ensure_response( $card );
+	}
+
+	/* ---------------------------------------------------------------
+	 * Lesson suggestions from the YouTube channel
+	 * ------------------------------------------------------------ */
+
+	public static function studio_suggestions(): WP_REST_Response {
+		return rest_ensure_response( MWM_YouTube::suggestions() );
+	}
+
+	public static function studio_suggestions_scan(): WP_REST_Response|WP_Error {
+		$scan = MWM_YouTube::scan_channel();
+		if ( is_wp_error( $scan ) ) {
+			return new WP_Error( 'scan_failed', $scan->get_error_message(), [ 'status' => 400 ] );
+		}
+		return rest_ensure_response( MWM_YouTube::suggestions() );
+	}
+
+	/**
+	 * Hide a suggestion for good ({ id }) or bring one back ({ id, undo: true }). Hidden videos are never suggested again.
+	 */
+	public static function studio_suggestions_ignore( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$p  = (array) $r->get_json_params();
+		$id = mwm_youtube_id( (string) ( $p['id'] ?? '' ) );
+		if ( ! $id ) {
+			return new WP_Error( 'bad_id', 'That video ID doesn’t look right.', [ 'status' => 400 ] );
+		}
+		MWM_YouTube::ignore_video( $id, ! empty( $p['undo'] ) );
+		return rest_ensure_response( MWM_YouTube::suggestions() );
+	}
+
+	/**
+	 * Add a suggested video to the site: { id, as: 'short' } publishes it to Quick Maths;
+	 * { id, as: 'draft' } creates a draft lesson; { all: true } drafts every longer video still suggested.
+	 */
+	public static function studio_suggestions_add( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$p = (array) $r->get_json_params();
+		if ( ! empty( $p['all'] ) ) {
+			$made = 0;
+			foreach ( MWM_YouTube::suggestions()['items'] as $s ) {
+				if ( ! $s['is_short'] && ! is_wp_error( MWM_YouTube::create_from_video( $s['id'], 'lesson', 'draft' ) ) ) {
+					$made++;
+				}
+			}
+			return rest_ensure_response( [ 'created' => $made ] + MWM_YouTube::suggestions() );
+		}
+		$id = mwm_youtube_id( (string) ( $p['id'] ?? '' ) );
+		$as = ( $p['as'] ?? 'draft' ) === 'short' ? 'short' : 'draft';
+		if ( ! $id ) {
+			return new WP_Error( 'bad_id', 'That video ID doesn’t look right.', [ 'status' => 400 ] );
+		}
+		$post_id = MWM_YouTube::create_from_video( $id, $as === 'short' ? 'short' : 'lesson', $as === 'short' ? 'publish' : 'draft' );
+		if ( is_wp_error( $post_id ) ) {
+			return new WP_Error( 'add_failed', $post_id->get_error_message(), [ 'status' => 400 ] );
+		}
+		return rest_ensure_response( [ 'created' => 1, 'post_id' => $post_id, 'url' => get_permalink( $post_id ) ] + MWM_YouTube::suggestions() );
 	}
 
 	/**
@@ -712,8 +772,9 @@ class MWM_REST {
 	public static function content_rows( string $kind = 'all', int $limit = 200 ): array {
 		$rows = [];
 		if ( in_array( $kind, [ 'all', 'lessons' ], true ) ) {
-			foreach ( mwm_query_lessons( [ 'format' => 'lesson', 'per_page' => $limit ] ) as $c ) {
-				$extras = [];
+			foreach ( mwm_query_lessons( [ 'format' => 'lesson', 'per_page' => $limit, 'status' => [ 'publish', 'draft' ] ] ) as $c ) {
+				$is_draft = get_post_status( $c['id'] ) === 'draft';
+				$extras   = [];
 				if ( $c['has_worksheet'] ) {
 					$extras[] = 'worksheet';
 				}
@@ -724,6 +785,7 @@ class MWM_REST {
 				$vstat  = (string) get_post_meta( $c['id'], 'video_status', true );
 				$vbad   = ! preg_match( '/^[A-Za-z0-9_-]{11}$/', (string) $c['youtube_id'] ) || ( $vstat && $vstat !== 'ok' );
 				$flags  = array_keys( array_filter( [
+					'draft'        => $is_draft,
 					'level'        => (bool) $review,
 					'no_worksheet' => ! $c['has_worksheet'],
 					'no_answers'   => $c['has_worksheet'] && ! $c['has_answers'],
@@ -734,8 +796,9 @@ class MWM_REST {
 					'id'    => $c['id'],
 					'kind'  => 'Lesson',
 					'title' => $c['title'],
-					'meta'  => implode( ' · ', array_filter( [ $c['level'], $c['topic'], $extras ? implode( ' + ', $extras ) : '', $review, $vbad ? ( MWM_YouTube::video_status_label( $vstat ) ?: 'no valid YouTube link' ) : '' ] ) ),
+					'meta'  => implode( ' · ', array_filter( [ $is_draft ? 'draft — not on the site yet' : '', $c['level'], $c['topic'], $extras ? implode( ' + ', $extras ) : '', $review, $vbad ? ( MWM_YouTube::video_status_label( $vstat ) ?: 'no valid YouTube link' ) : '' ] ) ),
 					'flags' => $flags,
+					'status' => $is_draft ? 'draft' : 'publish',
 					'url'   => $c['url'],
 					'date'  => get_post_field( 'post_date', $c['id'] ),
 					'added' => 'Lesson · added ' . mwm_relative_label( get_post_field( 'post_date', $c['id'] ) ),

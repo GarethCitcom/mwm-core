@@ -73,6 +73,7 @@ class MWM_Studio {
 			'sync'      => MWM_YouTube::sync_state(),
 			'recent'    => array_slice( MWM_REST::content_rows( 'all', 50 ), 0, 3 ),
 			'content'   => MWM_REST::content_rows( 'all', -1 ),
+			'suggestions' => MWM_YouTube::suggestions(),
 			'dismissed' => (object) array_filter( (array) get_user_meta( get_current_user_id(), 'mwm_studio_dismissed', true ), 'is_int' ),
 			'dates'     => array_values( array_filter( MWM_REST::content_rows( 'exam-dates' ) ) ),
 			'urls'      => [
