@@ -1142,3 +1142,66 @@ html[data-theme="dark"] .mwm-tag--warn {
 		justify-content: flex-end;
 	}
 }
+
+/* Dashboard notifications */
+.st-notes {
+	margin-top: 24px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--card);
+	padding: 16px 20px;
+}
+.st-notes__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+.st-notes__head h2 {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+}
+.st-notes__head .mwm-linkbtn {
+	margin: 0;
+}
+.st-notes__empty {
+	margin: 10px 0 0;
+	font-size: 14px;
+	color: var(--muted);
+}
+.st-notes__row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 0;
+	border-top: 1px solid var(--border);
+	flex-wrap: wrap;
+}
+.st-notes__row:first-of-type {
+	margin-top: 8px;
+}
+.st-notes__dot {
+	flex-shrink: 0;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: #E0A100;
+}
+.st-notes__row.is-urgent .st-notes__dot {
+	background: var(--link);
+}
+.st-notes__text {
+	flex: 1;
+	min-width: 200px;
+	font-size: 15px;
+	line-height: 1.5;
+}
+.st-notes__actions {
+	display: flex;
+	gap: 8px;
+}
+.st-notes__actions .st-smallbtn {
+	min-height: 36px;
+}

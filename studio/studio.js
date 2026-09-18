@@ -106,6 +106,7 @@
 		lesson: freshLesson(),
 		pp: freshPaper({}),
 		pw: freshPathway(),
+		dismissed: B.dismissed || {},
 		ws: freshWorksheet(),
 		ed: { paper: 'Paper 1 (non-calculator)', date: '', session: 'morning', level: 'gcse-higher', board: 'edexcel', checked: false, saving: false, error: '', dateConfirm: null },
 		dates: B.dates
@@ -122,6 +123,7 @@
 		var syncLabel = S.syncing ? 'Checking…' : (S.synced ? '✓ All up to date' : 'Check for new videos now');
 		return '<h1 class="st-h1">Hi ' + esc(B.user.name) + '</h1>' +
 			'<p class="st-intro">Everything here goes straight onto the website, step by step. You can’t break anything — every change can be undone.</p>' +
+			notifsHtml() +
 			'<div class="st-cards">' + cards.map(function (c) {
 				return '<div class="st-card"><span class="st-card__icon">' + icon(c.icon) + '</span><h2>' + esc(c.title) + '</h2><p>' + esc(c.text) + '</p>' +
 					'<button type="button" class="mwm-btn ' + (c.primary ? 'mwm-btn--primary' : 'mwm-btn--secondary') + '" data-go="' + c.view + '">Start</button></div>';
@@ -238,6 +240,39 @@
 			{ key: 'empty', label: 'No topics yet', tag: 'No topics' }
 		]
 	};
+	/* Dashboard notifications: one per issue type, most urgent first. text(n) is the sentence Kym sees. */
+	var NOTIFS = [
+		{ key: 'video', kind: 'Lessons', urgent: true, text: function (n) { return n === 1 ? '1 lesson has a video that’s missing or won’t play' : n + ' lessons have a video that’s missing or won’t play'; } },
+		{ key: 'level', kind: 'Lessons', text: function (n) { return n === 1 ? '1 lesson needs its level checking' : n + ' lessons need their level checking'; } },
+		{ key: 'no_worksheet', kind: 'Lessons', text: function (n) { return n === 1 ? '1 lesson has no worksheet' : n + ' lessons have no worksheet'; } },
+		{ key: 'no_answers', kind: 'Lessons', text: function (n) { return n === 1 ? '1 lesson worksheet has no worked answers' : n + ' lesson worksheets have no worked answers'; } },
+		{ key: 'unlinked', kind: 'Worksheets', text: function (n) { return n === 1 ? '1 worksheet isn’t linked to a lesson' : n + ' worksheets aren’t linked to a lesson'; } },
+		{ key: 'no_quiz', kind: 'Lessons', text: function (n) { return n === 1 ? '1 lesson has no quiz' : n + ' lessons have no quiz'; } },
+		{ key: 'empty', kind: 'Pathways', text: function (n) { return n === 1 ? '1 pathway has no topics yet' : n + ' pathways have no topics yet'; } }
+	];
+	var KIND_OF = { Lessons: 'Lesson', Worksheets: 'Worksheet', Pathways: 'Pathway' };
+	function notifCounts() {
+		return NOTIFS.map(function (n) {
+			var count = S.content.filter(function (it) { return it.kind === KIND_OF[n.kind] && (it.flags || []).indexOf(n.key) > -1; }).length;
+			var at = S.dismissed[n.key];
+			return { def: n, count: count, ignored: typeof at === 'number' && count <= at };
+		}).filter(function (x) { return x.count > 0; });
+	}
+	function notifsHtml() {
+		var all = notifCounts();
+		var live = all.filter(function (x) { return !x.ignored; });
+		var ignored = all.length - live.length;
+		var html = '<div class="st-notes"><div class="st-notes__head"><h2>Needs attention</h2>' + (ignored ? '<button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-notif-restore>' + ignored + (ignored === 1 ? ' ignored · show it' : ' ignored · show them') + '</button>' : '') + '</div>';
+		if (!live.length) {
+			html += '<p class="st-notes__empty">' + (all.length ? 'Nothing new — everything outstanding is ignored for now.' : 'Nothing needs your attention right now.') + '</p>';
+		} else {
+			html += live.map(function (x) {
+				return '<div class="st-notes__row' + (x.def.urgent ? ' is-urgent' : '') + '"><span class="st-notes__dot" aria-hidden="true"></span><span class="st-notes__text">' + esc(x.def.text(x.count)) + '</span>' +
+					'<span class="st-notes__actions"><button type="button" class="st-smallbtn" data-notif-go="' + x.def.key + '">Show them</button><button type="button" class="st-smallbtn st-smallbtn--quiet" data-notif-ignore="' + x.def.key + '" data-count="' + x.count + '" title="Hide this until more turn up">Ignore</button></span></div>';
+			}).join('');
+		}
+		return html + '</div>';
+	}
 	function issueTag(key) {
 		var all = ISSUES.Lessons.concat(ISSUES.Worksheets, ISSUES.Pathways);
 		var i = all.filter(function (x) { return x.key === key; })[0];
@@ -750,6 +785,22 @@
 		}
 		if ((el = e.target.closest('[data-reset-ws]'))) { S.ws = freshWorksheet(); render(); return; }
 		// Past papers
+		// Dashboard notifications
+		if ((el = e.target.closest('[data-notif-go]'))) {
+			var nk = el.getAttribute('data-notif-go'), ndef = NOTIFS.filter(function (n) { return n.key === nk; })[0];
+			S.kindFilter = ndef ? ndef.kind : 'All'; S.issueFilter = nk; S.confirmId = null; go('content'); return;
+		}
+		if ((el = e.target.closest('[data-notif-ignore]'))) {
+			var ik = el.getAttribute('data-notif-ignore'), ic = Number(el.getAttribute('data-count'));
+			S.dismissed[ik] = ic; render();
+			api('studio/notifications', { method: 'POST', body: { key: ik, count: ic } }).catch(function (err) { toast(err.message); });
+			return;
+		}
+		if ((el = e.target.closest('[data-notif-restore]'))) {
+			S.dismissed = {}; render();
+			api('studio/notifications', { method: 'POST', body: { reset: true } }).catch(function (err) { toast(err.message); });
+			return;
+		}
 		// Revision pathways
 		var PW = S.pw;
 		if ((el = e.target.closest('[data-pw-new]'))) { S.pw = freshPathway(); S.pw.open = true; render(); return; }

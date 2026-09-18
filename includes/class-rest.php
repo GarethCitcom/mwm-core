@@ -48,6 +48,7 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/worksheets/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_worksheet' ] ] ) );
 		register_rest_route( $ns, '/studio/subtopics', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_create_subtopic' ] ] ) );
 		register_rest_route( $ns, '/studio/pathways', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_pathway' ] ] ) );
+		register_rest_route( $ns, '/studio/notifications', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_notifications' ] ] ) );
 		register_rest_route( $ns, '/studio/pathways/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_pathway' ] ] ) );
 		register_rest_route( $ns, '/studio/upload', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_upload' ] ] ) );
 		register_rest_route( $ns, '/studio/quiz/validate', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_validate_quiz' ] ] ) );
@@ -237,6 +238,29 @@ class MWM_REST {
 		$card['status']    = get_post_status( $id );
 		$card['content']   = get_post_field( 'post_content', $id );
 		return rest_ensure_response( $card );
+	}
+
+	/**
+	 * Dashboard notifications: ignoring one stores the count it was ignored at (per user), so it comes back
+	 * only when more items turn up. Body: { key, count } to ignore, { key, count: null } to restore, { reset: true } for all.
+	 */
+	public static function studio_notifications( WP_REST_Request $r ): WP_REST_Response {
+		$p    = (array) $r->get_json_params();
+		$uid  = get_current_user_id();
+		$map  = get_user_meta( $uid, 'mwm_studio_dismissed', true );
+		$map  = is_array( $map ) ? $map : [];
+		$key  = sanitize_key( (string) ( $p['key'] ?? '' ) );
+		if ( ! empty( $p['reset'] ) ) {
+			$map = [];
+		} elseif ( $key ) {
+			if ( array_key_exists( 'count', $p ) && $p['count'] === null ) {
+				unset( $map[ $key ] );
+			} else {
+				$map[ $key ] = max( 0, (int) ( $p['count'] ?? 0 ) );
+			}
+		}
+		update_user_meta( $uid, 'mwm_studio_dismissed', $map );
+		return rest_ensure_response( [ 'dismissed' => (object) $map ] );
 	}
 
 	/**
@@ -719,14 +743,22 @@ class MWM_REST {
 			}
 		}
 		if ( in_array( $kind, [ 'all', 'worksheets' ], true ) ) {
+			// Worksheets attached to a past paper ("practise what came up") count as linked too.
+			$on_paper = [];
+			foreach ( get_posts( [ 'post_type' => 'mwm_past_paper', 'post_status' => 'publish', 'posts_per_page' => -1, 'fields' => 'ids', 'no_found_rows' => true ] ) as $pp_id ) {
+				foreach ( (array) get_post_meta( $pp_id, 'worksheets', true ) as $wid ) {
+					$on_paper[ (int) $wid ] = true;
+				}
+			}
 			foreach ( get_posts( [ 'post_type' => 'mwm_worksheet', 'post_status' => 'publish', 'posts_per_page' => $limit, 'no_found_rows' => true ] ) as $p ) {
 				$d = mwm_worksheet_data( $p, false );
+				$where = $d['lesson_id'] ? 'on the lesson page' : ( isset( $on_paper[ $p->ID ] ) ? 'on a past paper' : 'no lesson linked' );
 				$rows[] = [
 					'id'        => $p->ID,
 					'kind'      => 'Worksheet',
 					'title'     => $d['title'],
-					'meta'      => implode( ' · ', array_filter( [ $d['level'], $d['topic'], $d['has_answers'] ? 'with answers' : '', $d['lesson_id'] ? 'on the lesson page' : 'no lesson linked' ] ) ),
-					'flags'     => $d['lesson_id'] ? [] : [ 'unlinked' ],
+					'meta'      => implode( ' · ', array_filter( [ $d['level'], $d['topic'], $d['has_answers'] ? 'with answers' : '', $where ] ) ),
+					'flags'     => $d['lesson_id'] || isset( $on_paper[ $p->ID ] ) ? [] : [ 'unlinked' ],
 					'url'       => $d['url'],
 					'lesson_id' => $d['lesson_id'],
 					'date'      => $p->post_date,
