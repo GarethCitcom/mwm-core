@@ -295,6 +295,9 @@ class MWM_YouTube {
 			if ( get_post_status( $post_id ) !== 'publish' && get_post_meta( $post_id, 'playlist_id', true ) === $pl['id'] ) {
 				wp_update_post( [ 'ID' => $post_id, 'post_status' => 'publish' ] );
 			}
+			if ( trim( get_post_field( 'post_title', $post_id ) ) === '' ) {
+				wp_update_post( [ 'ID' => $post_id, 'post_title' => self::clean_title( $data['title'] ) ] );
+			}
 		} else {
 			$post_id = (int) wp_insert_post( [
 				'post_type'    => 'mwm_lesson',
@@ -338,10 +341,17 @@ class MWM_YouTube {
 		return $pl['theme'] ? 'gaming' : 'lesson';
 	}
 
-	private static function clean_title( string $title ): string {
-		$title = preg_replace( '/#\w+/', '', $title );
-		$title = preg_replace( '/\s+/', ' ', $title );
-		return trim( $title, " \t\n\r\0\x0B-|:" );
+	/**
+	 * Drop hashtags from a YouTube title. If the title was nothing but hashtags, keep the words instead.
+	 */
+	public static function clean_title( string $title ): string {
+		$clean = preg_replace( '/#\w+/', '', $title );
+		$clean = trim( preg_replace( '/\s+/', ' ', $clean ), " \t\n\r\0\x0B-|:" );
+		if ( $clean === '' ) {
+			$clean = trim( preg_replace( '/\s+/', ' ', str_replace( '#', '', $title ) ) );
+			$clean = ucfirst( $clean );
+		}
+		return $clean;
 	}
 
 	/**
