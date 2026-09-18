@@ -288,7 +288,8 @@
 		}
 		root.innerHTML = html;
 		document.querySelectorAll('[data-studio-nav] [data-view]').forEach(function (a) {
-			var on = a.getAttribute('data-view') === S.view;
+			// Past papers and exam dates live off the dashboard, so keep Dashboard lit while on them.
+			var on = a.getAttribute('data-view') === S.view || (a.getAttribute('data-view') === 'dash' && (S.view === 'papers' || S.view === 'dates'));
 			a.classList.toggle('is-current', on);
 			if (on) { a.setAttribute('aria-current', 'page'); } else { a.removeAttribute('aria-current'); }
 		});
