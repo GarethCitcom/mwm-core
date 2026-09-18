@@ -726,6 +726,20 @@ class MWM_CLI {
 		}
 		WP_CLI::success( $state['summary'] ?? 'Done.' );
 	}
+
+	/**
+	 * Ask YouTube whether every lesson's video is still public and playable; stores video_status on each lesson.
+	 *
+	 * @subcommand check-videos
+	 * @when after_wp_load
+	 */
+	public function check_videos( array $args, array $assoc ): void {
+		$r = MWM_YouTube::check_videos();
+		if ( is_wp_error( $r ) ) {
+			WP_CLI::error( $r->get_error_message() );
+		}
+		WP_CLI::success( sprintf( '%d videos checked: %d play fine, %d need attention.', $r['checked'], $r['ok'], $r['problems'] ) );
+	}
 }
 
 WP_CLI::add_command( 'mwm', 'MWM_CLI' );

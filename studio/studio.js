@@ -97,7 +97,7 @@
 	var S = {
 		view: B.view || 'dash',
 		playlists: B.playlists, sync: B.sync, synced: false, syncing: false, recent: B.recent,
-		content: B.content, kindFilter: 'All', confirmId: null, lastDeleted: null,
+		content: B.content, kindFilter: 'All', issueFilter: '', confirmId: null, lastDeleted: null,
 		lesson: freshLesson(),
 		pp: { id: 0, series: B.series[0], tier: 'higher', paper: '1', qp: null, ms: null, published: null, publishing: false, error: '', editingTitle: '' },
 		ws: freshWorksheet(),
@@ -215,21 +215,53 @@
 		return '<div class="st-filerow ' + cls + '"><div><div class="st-filerow__label">' + label + '</div><div class="st-filerow__status' + (ok ? ' is-ok' : '') + '">' + esc(status) + '</div></div><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="' + key + '">Choose PDF</label></div>';
 	}
 
+	/* "Needs attention" filters per content kind; keys match the `flags` the REST API puts on each row. */
+	var ISSUES = {
+		Lessons: [
+			{ key: 'level', label: 'Level needs checking', tag: 'Check level' },
+			{ key: 'no_worksheet', label: 'Missing worksheet', tag: 'No worksheet' },
+			{ key: 'no_answers', label: 'Missing worked answers', tag: 'No answers' },
+			{ key: 'no_quiz', label: 'No quiz yet', tag: 'No quiz' },
+			{ key: 'video', label: 'Video missing or not playable', tag: 'Video problem' }
+		],
+		Worksheets: [
+			{ key: 'unlinked', label: 'Not linked to a lesson', tag: 'No lesson' }
+		]
+	};
+	function issueTag(key) {
+		var all = ISSUES.Lessons.concat(ISSUES.Worksheets);
+		var i = all.filter(function (x) { return x.key === key; })[0];
+		return i ? i.tag : key;
+	}
 	function viewContent() {
 		var kinds = ['All', 'Lessons', 'Worksheets', 'Past papers', 'Exam dates', 'Quizzes'];
 		var map = { 'Lessons': 'Lesson', 'Worksheets': 'Worksheet', 'Past papers': 'Past paper', 'Exam dates': 'Exam date', 'Quizzes': 'Quiz' };
-		var rows = S.content.filter(function (it) { return S.kindFilter === 'All' || map[S.kindFilter] === it.kind; });
+		var ofKind = S.content.filter(function (it) { return S.kindFilter === 'All' || map[S.kindFilter] === it.kind; });
+		var issues = ISSUES[S.kindFilter] || [];
+		var rows = S.issueFilter ? ofKind.filter(function (it) { return (it.flags || []).indexOf(S.issueFilter) > -1; }) : ofKind;
+		var issuesHtml = '';
+		if (issues.length) {
+			var fine = ofKind.filter(function (it) { return !(it.flags || []).length; }).length;
+			issuesHtml = '<div class="st-issues"><span class="st-issues__label">Needs attention</span><div class="st-chips st-chips--flush">' +
+				issues.map(function (i) {
+					var n = ofKind.filter(function (it) { return (it.flags || []).indexOf(i.key) > -1; }).length;
+					return chip(i.label + ' · ' + n, S.issueFilter === i.key, { issue: i.key }, n ? '' : 'is-empty');
+				}).join('') + '</div>' +
+				'<div class="st-issues__meta">' + (S.issueFilter ? 'Showing ' + rows.length + ' of ' + ofKind.length + ' · <button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-issue="">Show all</button>' : fine + ' of ' + ofKind.length + ' have nothing outstanding') + '</div></div>';
+		}
 		return '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>' +
 			'<h1 class="st-h1 st-h1--after-back">Your content</h1>' +
 			'<p class="st-intro">Everything that’s on the site. Edit anything, or remove it — there’s an undo if you change your mind.</p>' +
 			'<div class="st-chips" style="margin-top:24px">' + kinds.map(function (k) { return chip(k, S.kindFilter === k, { kind: k }); }).join('') + '</div>' +
+			issuesHtml +
 			(S.lastDeleted ? '<div class="st-undo"><span>“' + esc(S.lastDeleted.item.title) + '” has been removed from the site.</span><button type="button" data-undo>Undo</button></div>' : '') +
 			'<div class="st-list st-list--20">' + (rows.length ? rows.map(function (r) {
 				var actions = S.confirmId === r.id
 					? '<span class="st-confirm-text">Remove from the site?</span><button type="button" class="st-smallbtn st-smallbtn--danger" data-remove="' + r.id + '">Yes, remove</button><button type="button" class="st-smallbtn st-smallbtn--keep" data-keep>Keep it</button>'
 					: '<button type="button" class="st-smallbtn" data-edit="' + r.id + '">Edit</button><button type="button" class="st-smallbtn st-smallbtn--quiet" data-ask-remove="' + r.id + '">Remove</button>';
-				return '<div class="st-list__row st-list__row--16"><div class="st-list__main"><div class="st-list__name">' + esc(r.title) + '</div><div class="st-list__sub">' + esc(r.meta) + '</div></div>' + tag(r.kind, 'mwm-tag--outline mwm-tag--sm') + actions + '</div>';
-			}).join('') : '<div class="st-list__row"><span class="mwm-meta">Nothing here yet.</span></div>') + '</div>' +
+				var flags = (r.flags || []).map(function (f) { return tag(issueTag(f), 'mwm-tag--warn mwm-tag--sm' + (S.issueFilter === f ? ' is-on' : '')); }).join('');
+				return '<div class="st-list__row st-list__row--16"><div class="st-list__main"><div class="st-list__name">' + esc(r.title) + '</div><div class="st-list__sub">' + esc(r.meta) + '</div>' + (flags ? '<div class="st-list__flags">' + flags + '</div>' : '') + '</div>' + tag(r.kind, 'mwm-tag--outline mwm-tag--sm') + actions + '</div>';
+			}).join('') : '<div class="st-list__row"><span class="mwm-meta">' + (S.issueFilter ? 'Nothing needs attention here — nice.' : 'Nothing here yet.') + '</span></div>') + '</div>' +
 			'<p class="st-note st-note--16">Removing a lesson never deletes your video — it stays safe on YouTube.</p>';
 	}
 
@@ -516,7 +548,8 @@
 		if ((el = e.target.closest('[data-publish]'))) { publishLesson(); return; }
 		if ((el = e.target.closest('[data-reset-lesson]'))) { S.lesson = freshLesson(); render(); return; }
 		// Content
-		if ((el = e.target.closest('[data-kind]'))) { S.kindFilter = el.getAttribute('data-kind'); S.confirmId = null; render(); return; }
+		if ((el = e.target.closest('[data-kind]'))) { S.kindFilter = el.getAttribute('data-kind'); S.issueFilter = ''; S.confirmId = null; render(); return; }
+		if ((el = e.target.closest('[data-issue]'))) { var iss = el.getAttribute('data-issue'); S.issueFilter = S.issueFilter === iss ? '' : iss; S.confirmId = null; render(); return; }
 		if ((el = e.target.closest('[data-edit]'))) { editItem(Number(el.getAttribute('data-edit'))); return; }
 		if ((el = e.target.closest('[data-ask-remove]'))) { S.confirmId = Number(el.getAttribute('data-ask-remove')); render(); return; }
 		if ((el = e.target.closest('[data-keep]'))) { S.confirmId = null; render(); return; }

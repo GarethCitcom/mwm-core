@@ -72,7 +72,7 @@ class MWM_Studio {
 			'playlists' => MWM_YouTube::playlist_counts(),
 			'sync'      => MWM_YouTube::sync_state(),
 			'recent'    => array_slice( MWM_REST::content_rows( 'all', 50 ), 0, 3 ),
-			'content'   => MWM_REST::content_rows( 'all' ),
+			'content'   => MWM_REST::content_rows( 'all', -1 ),
 			'dates'     => array_values( array_filter( MWM_REST::content_rows( 'exam-dates' ) ) ),
 			'urls'      => [
 				'home'       => home_url( '/' ),

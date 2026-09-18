@@ -920,3 +920,57 @@
 	opacity: 0.6;
 	pointer-events: none;
 }
+
+/* "Needs attention" filters on Your content */
+.st-issues {
+	margin-top: 16px;
+	padding: 14px 16px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--tint);
+}
+.st-issues__label {
+	display: block;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	color: var(--link);
+	margin-bottom: 8px;
+}
+.st-chips--flush {
+	margin-top: 0;
+}
+.st-issues .mwm-chip {
+	background: var(--card);
+}
+.st-issues .mwm-chip.is-empty {
+	opacity: 0.55;
+}
+.st-issues__meta {
+	margin-top: 10px;
+	font-size: 14px;
+	line-height: 1.5;
+	color: var(--muted);
+}
+.st-list__flags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 6px;
+}
+.mwm-tag--warn {
+	background: #FFF4E5;
+	color: #8A4B00;
+	border: 1px solid #F5D3A6;
+}
+.mwm-tag--warn.is-on {
+	background: #8A4B00;
+	color: #fff;
+	border-color: #8A4B00;
+}
+html[data-theme="dark"] .mwm-tag--warn {
+	background: #3A2A12;
+	color: #F5C77A;
+	border-color: #5C4220;
+}

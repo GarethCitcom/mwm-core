@@ -12,7 +12,7 @@ class MWM_YouTube {
 	public const API        = 'https://www.googleapis.com/youtube/v3/';
 
 	public static function init(): void {
-		add_action( self::CRON_HOOK, [ __CLASS__, 'sync_all' ] );
+		add_action( self::CRON_HOOK, [ __CLASS__, 'daily' ] );
 		add_action( 'admin_post_mwm_sync_now', [ __CLASS__, 'admin_sync_now' ] );
 	}
 
@@ -175,6 +175,81 @@ class MWM_YouTube {
 	/**
 	 * Sync every configured playlist. Returns a summary array (also stored in the sync state).
 	 */
+	/**
+	 * Daily cron: pull the playlists, then confirm every lesson's video still plays.
+	 */
+	public static function daily(): void {
+		self::sync_all();
+		self::check_videos();
+	}
+
+	/**
+	 * Ask YouTube whether each lesson's video is still public and embeddable.
+	 * Stores `video_status` (ok | missing | private | unembeddable | invalid) and `video_checked` on each lesson.
+	 * Returns counts, or a WP_Error when there is no API key.
+	 */
+	public static function check_videos(): array|WP_Error {
+		if ( ! self::api_key() ) {
+			return new WP_Error( 'mwm_no_key', 'No YouTube Data API key is set.' );
+		}
+		$ids = get_posts( [ 'post_type' => 'mwm_lesson', 'post_status' => [ 'publish', 'draft' ], 'posts_per_page' => -1, 'fields' => 'ids', 'no_found_rows' => true ] );
+		$by_video = [];
+		$counts   = [ 'checked' => 0, 'ok' => 0, 'problems' => 0 ];
+		foreach ( $ids as $id ) {
+			$vid = (string) get_post_meta( $id, 'youtube_id', true );
+			if ( ! preg_match( '/^[A-Za-z0-9_-]{11}$/', $vid ) ) {
+				update_post_meta( $id, 'video_status', 'invalid' );
+				update_post_meta( $id, 'video_checked', time() );
+				$counts['checked']++;
+				$counts['problems']++;
+				continue;
+			}
+			$by_video[ $vid ][] = $id;
+		}
+		foreach ( array_chunk( array_keys( $by_video ), 50 ) as $chunk ) {
+			$body = self::api_get( 'videos', [ 'part' => 'status', 'id' => implode( ',', $chunk ), 'maxResults' => 50 ] );
+			if ( is_wp_error( $body ) ) {
+				return $body;
+			}
+			$found = [];
+			foreach ( (array) ( $body['items'] ?? [] ) as $item ) {
+				$s = $item['status'] ?? [];
+				if ( ( $s['privacyStatus'] ?? 'public' ) === 'private' ) {
+					$found[ $item['id'] ] = 'private';
+				} elseif ( isset( $s['embeddable'] ) && ! $s['embeddable'] ) {
+					$found[ $item['id'] ] = 'unembeddable';
+				} elseif ( ( $s['uploadStatus'] ?? 'processed' ) !== 'processed' ) {
+					$found[ $item['id'] ] = 'missing';
+				} else {
+					$found[ $item['id'] ] = 'ok';
+				}
+			}
+			foreach ( $chunk as $vid ) {
+				$status = $found[ $vid ] ?? 'missing';
+				foreach ( $by_video[ $vid ] as $id ) {
+					update_post_meta( $id, 'video_status', $status );
+					update_post_meta( $id, 'video_checked', time() );
+					$counts['checked']++;
+					$counts[ $status === 'ok' ? 'ok' : 'problems' ]++;
+				}
+			}
+		}
+		update_option( 'mwm_video_check', [ 'at' => time() ] + $counts, false );
+		return $counts;
+	}
+
+	/**
+	 * Human label for a stored video_status.
+	 */
+	public static function video_status_label( string $status ): string {
+		return [
+			'missing'      => 'video not found on YouTube',
+			'private'      => 'video is private on YouTube',
+			'unembeddable' => 'video can’t be embedded',
+			'invalid'      => 'no valid YouTube link',
+		][ $status ] ?? '';
+	}
+
 	public static function sync_all(): array {
 		$state = [ 'last_run' => time(), 'playlists' => [], 'error' => '' ];
 		$lines = [];

@@ -591,11 +591,21 @@ class MWM_REST {
 					$extras[] = 'quiz';
 				}
 				$review = get_post_meta( $c['id'], 'needs_level_review', true ) ? 'level needs checking' : '';
+				$vstat  = (string) get_post_meta( $c['id'], 'video_status', true );
+				$vbad   = ! preg_match( '/^[A-Za-z0-9_-]{11}$/', (string) $c['youtube_id'] ) || ( $vstat && $vstat !== 'ok' );
+				$flags  = array_keys( array_filter( [
+					'level'        => (bool) $review,
+					'no_worksheet' => ! $c['has_worksheet'],
+					'no_answers'   => $c['has_worksheet'] && ! $c['has_answers'],
+					'no_quiz'      => ! $c['has_quiz'],
+					'video'        => $vbad,
+				] ) );
 				$rows[] = [
 					'id'    => $c['id'],
 					'kind'  => 'Lesson',
 					'title' => $c['title'],
-					'meta'  => implode( ' · ', array_filter( [ $c['level'], $c['topic'], $extras ? implode( ' + ', $extras ) : '', $review ] ) ),
+					'meta'  => implode( ' · ', array_filter( [ $c['level'], $c['topic'], $extras ? implode( ' + ', $extras ) : '', $review, $vbad ? ( MWM_YouTube::video_status_label( $vstat ) ?: 'no valid YouTube link' ) : '' ] ) ),
+					'flags' => $flags,
 					'url'   => $c['url'],
 					'date'  => get_post_field( 'post_date', $c['id'] ),
 					'added' => 'Lesson · added ' . mwm_relative_label( get_post_field( 'post_date', $c['id'] ) ),
@@ -610,6 +620,7 @@ class MWM_REST {
 					'kind'      => 'Worksheet',
 					'title'     => $d['title'],
 					'meta'      => implode( ' · ', array_filter( [ $d['level'], $d['topic'], $d['has_answers'] ? 'with answers' : '', $d['lesson_id'] ? 'on the lesson page' : 'no lesson linked' ] ) ),
+					'flags'     => $d['lesson_id'] ? [] : [ 'unlinked' ],
 					'url'       => $d['url'],
 					'lesson_id' => $d['lesson_id'],
 					'date'      => $p->post_date,
@@ -668,7 +679,7 @@ class MWM_REST {
 	}
 
 	public static function studio_content( WP_REST_Request $r ): WP_REST_Response {
-		return rest_ensure_response( self::content_rows( sanitize_key( (string) $r->get_param( 'kind' ) ) ?: 'all' ) );
+		return rest_ensure_response( self::content_rows( sanitize_key( (string) $r->get_param( 'kind' ) ) ?: 'all', -1 ) );
 	}
 
 	private static function studio_types(): array {
@@ -696,7 +707,8 @@ class MWM_REST {
 
 	public static function studio_sync(): WP_REST_Response {
 		$state = MWM_YouTube::sync_all();
-		return rest_ensure_response( [ 'state' => MWM_YouTube::sync_state(), 'playlists' => MWM_YouTube::playlist_counts(), 'ok' => empty( $state['error'] ), 'error' => $state['error'] ?? '' ] );
+		$check = MWM_YouTube::check_videos(); // Refresh the "video missing or not playable" flags at the same time.
+		return rest_ensure_response( [ 'state' => MWM_YouTube::sync_state(), 'playlists' => MWM_YouTube::playlist_counts(), 'ok' => empty( $state['error'] ), 'error' => $state['error'] ?? '', 'videos' => is_wp_error( $check ) ? null : $check ] );
 	}
 
 	public static function studio_dashboard(): WP_REST_Response {
