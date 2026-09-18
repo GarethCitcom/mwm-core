@@ -295,8 +295,12 @@ class MWM_YouTube {
 			if ( get_post_status( $post_id ) !== 'publish' && get_post_meta( $post_id, 'playlist_id', true ) === $pl['id'] ) {
 				wp_update_post( [ 'ID' => $post_id, 'post_status' => 'publish' ] );
 			}
-			if ( trim( get_post_field( 'post_title', $post_id ) ) === '' ) {
-				wp_update_post( [ 'ID' => $post_id, 'post_title' => self::clean_title( $data['title'] ) ] );
+			// Follow YouTube title changes unless the title was edited on the site since the last sync.
+			$current   = trim( get_post_field( 'post_title', $post_id ) );
+			$last_sync = (string) get_post_meta( $post_id, 'synced_title', true );
+			$fresh     = self::clean_title( $data['title'] );
+			if ( $current === '' || ( $last_sync !== '' && $current === $last_sync && $fresh !== $current ) ) {
+				wp_update_post( [ 'ID' => $post_id, 'post_title' => $fresh ] );
 			}
 		} else {
 			$post_id = (int) wp_insert_post( [
@@ -319,6 +323,7 @@ class MWM_YouTube {
 			self::auto_tag( $post_id, $data );
 		}
 		update_post_meta( $post_id, 'playlist_id', $pl['id'] );
+		update_post_meta( $post_id, 'synced_title', self::clean_title( $data['title'] ) );
 		update_post_meta( $post_id, 'duration_seconds', $data['seconds'] );
 		// Keep synced videos in the right format as durations come in; never touch lessons Kym added or we imported.
 		if ( ! $created && ! get_post_meta( $post_id, 'source_id', true ) && mwm_get_term_slug( $post_id, 'mwm_format' ) !== 'lesson' ) {
