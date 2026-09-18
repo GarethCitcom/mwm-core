@@ -77,6 +77,7 @@ class MWM_Studio {
 			'urls'      => [
 				'home'       => home_url( '/' ),
 				'pastPapers' => mwm_page_url( 'past-papers' ),
+				'worksheets' => mwm_page_url( 'worksheets' ),
 				'calendar'   => mwm_page_url( 'calendar' ),
 				'logout'     => wp_logout_url( home_url( '/' ) ),
 			],

@@ -70,6 +70,32 @@
 	padding: 0 22px;
 	border-radius: 12px;
 }
+.st-card--small {
+	margin-top: 20px;
+	flex-direction: row;
+	align-items: center;
+	gap: 16px;
+	padding: 20px 24px;
+	flex-wrap: wrap;
+}
+.st-card--small .st-card__icon {
+	width: 40px;
+	height: 40px;
+}
+.st-card--small h2 {
+	margin: 0;
+	font-size: 16px;
+}
+.st-card--small p {
+	margin: 2px 0 0;
+}
+.st-card--small .st-card__text {
+	flex: 1;
+	min-width: 200px;
+}
+.st-card--small .mwm-linkbtn {
+	margin: 0;
+}
 .st-tintbox {
 	margin-top: 36px;
 	border: 1px solid var(--border);

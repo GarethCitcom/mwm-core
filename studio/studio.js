@@ -40,6 +40,7 @@
 	function icon(name) {
 		var p = 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
 		if (name === 'play') { return '<svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M7 4.5l9 5.5-9 5.5z"></path></svg>'; }
+		if (name === 'worksheet') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><rect x="3" y="2" width="10" height="12" rx="1.5"></rect><path d="M5.5 6h5M5.5 9h5"></path></svg>'; }
 		if (name === 'download') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5"></path><line x1="3" y1="13" x2="13" y2="13"></line></svg>'; }
 		if (name === 'calendar') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><rect x="2" y="3" width="12" height="11" rx="2"></rect><line x1="2" y1="6.5" x2="14" y2="6.5"></line><line x1="5.5" y1="1.5" x2="5.5" y2="4"></line><line x1="10.5" y1="1.5" x2="10.5" y2="4"></line></svg>'; }
 		if (name === 'tick') { return '<svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg>'; }
@@ -51,12 +52,16 @@
 	function freshLesson() {
 		return { id: 0, step: 1, yt: '', video: null, videoError: '', finding: false, level: 'gcse-higher', topic: 'algebra', subtopic: '', ws: null, ans: null, quizText: '', quizResult: null, quizImages: {}, copied: false, publishing: false, published: null, editingTitle: '', publishError: '' };
 	}
+	function freshWorksheet() {
+		return { id: 0, title: '', level: 'gcse-foundation', topic: 'number', subtopic: '', pdf: null, ans: null, desc: '', published: null, publishing: false, error: '', editingTitle: '' };
+	}
 	var S = {
 		view: B.view || 'dash',
 		playlists: B.playlists, sync: B.sync, synced: false, syncing: false, recent: B.recent,
 		content: B.content, kindFilter: 'All', confirmId: null, lastDeleted: null,
 		lesson: freshLesson(),
 		pp: { id: 0, series: B.series[0], tier: 'higher', paper: '1', qp: null, ms: null, published: null, publishing: false, error: '', editingTitle: '' },
+		ws: freshWorksheet(),
 		ed: { paper: 'Paper 1 (non-calculator)', date: '', session: 'morning', level: 'gcse-higher', board: 'edexcel', checked: false, saving: false, error: '', dateConfirm: null },
 		dates: B.dates
 	};
@@ -65,8 +70,8 @@
 	function viewDash() {
 		var cards = [
 			{ icon: 'play', title: 'Add a new lesson', text: 'Paste a YouTube link and we’ll do the rest — about two minutes.', view: 'lesson', primary: true },
-			{ icon: 'download', title: 'Upload past papers', text: 'Add a paper and its mark scheme as PDFs.', view: 'papers' },
-			{ icon: 'calendar', title: 'Update exam dates', text: 'Verified dates appear on the exam calendar.', view: 'dates' }
+			{ icon: 'worksheet', title: 'Add a worksheet', text: 'A worksheet on its own, with its own page to send students to.', view: 'worksheets' },
+			{ icon: 'download', title: 'Upload past papers', text: 'Add a paper and its mark scheme as PDFs.', view: 'papers' }
 		];
 		var status = S.synced ? 'Checked just now' : (S.sync && S.sync.last_relative ? S.sync.last_relative : 'Not checked yet');
 		var syncLabel = S.syncing ? 'Checking…' : (S.synced ? '✓ All up to date' : 'Check for new videos now');
@@ -80,6 +85,7 @@
 			'<p>Anything you add to these YouTube playlists appears on the site overnight, automatically. There’s nothing for you to do here.</p>' +
 			'<div class="st-list">' + S.playlists.map(function (pl) { return '<div class="st-list__row"><span class="st-list__name">' + esc(pl.name) + '</span><span class="st-list__meta">' + esc(pl.meta) + '</span></div>'; }).join('') +
 			'<div class="st-list__foot"><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-sync' + (S.syncing ? ' disabled' : '') + '>' + esc(syncLabel) + '</button>' + (S.sync && S.sync.error && !S.synced ? '<p class="st-error" style="margin-top:8px">' + esc(S.sync.error) + '</p>' : '') + '</div></div></div>' +
+			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('calendar') + '</span><div class="st-card__text"><h2>Update exam dates</h2><p>Once a year, when the boards confirm them — verified dates appear on the exam calendar.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="dates">Update dates<span aria-hidden="true">→</span></button></div>' +
 			'<h2 class="st-h2">Recently added</h2>' +
 			'<div class="st-list st-list--12">' + (S.recent.length ? S.recent.map(function (r) { return '<div class="st-list__row"><span class="st-list__name" style="flex:1">' + esc(r.title) + '</span><span class="st-list__sub" style="margin:0;white-space:nowrap">' + esc(r.added) + '</span>' + tag('Live', 'mwm-tag--live') + '</div>'; }).join('') : '<div class="st-list__row"><span class="mwm-meta">Nothing added yet — your first lesson will show here.</span></div>') + '</div>' +
 			'<button type="button" class="mwm-linkbtn st-more" data-go="content">See and edit everything you’ve added<span aria-hidden="true">→</span></button>';
@@ -189,6 +195,41 @@
 			'<p class="st-note st-note--16">Removing a lesson never deletes your video — it stays safe on YouTube.</p>';
 	}
 
+	function viewWorksheet() {
+		var W = S.ws;
+		var html = '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>' +
+			'<h1 class="st-h1 st-h1--after-back">' + (W.id ? 'Edit a worksheet' : 'Add a worksheet') + '</h1>';
+		if (W.id) { html += '<div class="st-banner">You’re editing <strong>' + esc(W.editingTitle) + '</strong> — change what you need, then publish again.</div>'; }
+		if (W.published) {
+			html += '<div class="st-success"><span class="st-success__icon">' + icon('tick') + '</span><h2>It’s live!</h2><p>The worksheet has its own page now — share the link with students, or find it under Worksheets.</p>' +
+				'<div class="st-success__actions"><a href="' + esc(W.published.url) + '" class="mwm-btn mwm-btn--primary">See the worksheet</a><button type="button" class="mwm-btn mwm-btn--secondary" data-reset-ws>Add another</button></div>' +
+				'<p class="st-note st-note--16" style="text-align:center">Link to give out: <a href="' + esc(W.published.url) + '">' + esc(W.published.url) + '</a></p></div>';
+			return html;
+		}
+		var topic = B.topics.filter(function (t) { return t.slug === W.topic; })[0];
+		html += '<p class="st-intro">For a worksheet that isn’t part of a lesson. If it goes with a video, add it through “Add a lesson” instead and it gets linked up for you.</p>' +
+			'<div class="st-panel"><h2>What’s it called?</h2><p class="st-panel__sub">Students see this as the page title, so keep it plain — “Sharing in a ratio” rather than a file name.</p>' +
+			'<div class="st-inputrow"><input type="text" class="st-input" value="' + esc(W.title) + '" placeholder="e.g. Sharing in a ratio" aria-label="Worksheet name" data-ws-title></div>' +
+			'<div class="st-label st-label--24">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, W.level === l.slug, { wslevel: l.slug }); }).join('') + '</div>' +
+			'<div class="st-label st-label--24">Topic</div><div class="st-chips">' + B.topics.map(function (t) { return chip(t.name, W.topic === t.slug, { wstopic: t.slug }); }).join('') + '</div>';
+		if (topic && topic.subtopics.length) {
+			html += '<div class="st-label st-label--24">Subtopic <span style="font-weight:400;color:var(--muted)">(optional)</span></div><div class="st-chips">' + topic.subtopics.map(function (s) { return chip(s.name, W.subtopic === s.slug, { wssubtopic: s.slug }); }).join('') + '</div>';
+		}
+		html += '</div>' +
+			'<div class="st-panel"><h2>The PDFs</h2><p class="st-panel__sub">The worksheet itself, and the worked answers if you have them — answers sit behind “Reveal answers” on the page.</p>' +
+			'<div class="st-filerow st-filerow--first"><div><div class="st-filerow__label">Worksheet PDF</div><div class="st-filerow__status' + (W.pdf ? ' is-ok' : '') + '">' + esc(W.pdf ? '✓ ' + W.pdf.filename + ' added' : 'Needed before you can publish.') + '</div></div><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="wspdf">Choose PDF</label></div>' +
+			'<div class="st-filerow"><div><div class="st-filerow__label">Worked answers PDF <span>(optional)</span></div><div class="st-filerow__status' + (W.ans ? ' is-ok' : '') + '">' + esc(W.ans ? '✓ ' + W.ans.filename + ' added' : 'Optional — appears behind “Reveal answers”.') + '</div></div><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="wsans">Choose PDF</label></div>' +
+			'<div class="st-label st-label--24">A line about it <span style="font-weight:400;color:var(--muted)">(optional)</span></div>' +
+			'<textarea class="st-textarea" rows="3" style="font-family:inherit;font-size:14px" placeholder="e.g. Ten exam-style questions on sharing in a ratio, with a tricky one at the end." aria-label="Description" data-ws-desc>' + esc(W.desc) + '</textarea></div>' +
+			'<div class="st-panel"><h2>Check it, then publish</h2>' +
+			'<div class="st-preview"><span class="st-preview__thumb mwm-thumb--doc" style="display:flex;align-items:center;justify-content:center"><span class="mwm-thumb__doc">' + icon('worksheet') + '<span>PDF</span></span></span><div class="st-preview__body"><div class="mwm-tags">' + tag(levelName(W.level), 'mwm-tag--higher') + tag(topicName(W.subtopic || W.topic), 'mwm-tag--outline') + '</div>' +
+			'<div class="st-preview__title">' + esc(W.title || 'Untitled worksheet') + '</div><div class="st-preview__meta">' + esc([W.pdf ? W.pdf.label : 'No PDF yet', W.ans ? 'Answers' : ''].filter(Boolean).join(' · ')) + '</div></div></div>' +
+			(W.pdf || W.id ? '<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish" data-publish-ws' + (W.publishing ? ' disabled' : '') + '>' + (W.publishing ? 'Publishing…' : (W.id ? 'Publish changes' : 'Publish worksheet')) + '</button>' : '<p class="st-note st-note--16">Add the worksheet PDF above and the publish button appears here.</p>') +
+			(W.error ? '<p class="st-error">' + esc(W.error) + '</p>' : '') +
+			'<p class="st-note">It goes live straight away — and you can take it down again just as quickly.</p></div>';
+		return html;
+	}
+
 	function viewPapers() {
 		var P = S.pp;
 		var html = '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>' +
@@ -240,6 +281,7 @@
 		switch (S.view) {
 			case 'lesson': html = viewLesson(); break;
 			case 'content': html = viewContent(); break;
+			case 'worksheets': html = viewWorksheet(); break;
 			case 'papers': html = viewPapers(); break;
 			case 'dates': html = viewDates(); break;
 			default: html = viewDash();
@@ -300,7 +342,17 @@
 		var it = S.content.filter(function (r) { return r.id === id; })[0];
 		if (!it) { return; }
 		if (it.kind === 'Worksheet' && !it.lesson_id) {
-			window.location.href = B.site + 'wp-admin/post.php?post=' + it.id + '&action=edit';
+			root.classList.add('st-busy');
+			api('studio/worksheets/' + it.id).then(function (w) {
+				root.classList.remove('st-busy');
+				var W = freshWorksheet();
+				W.id = w.id; W.editingTitle = w.title; W.title = w.title; W.level = w.level_slug || 'gcse-foundation';
+				W.topic = w.topic_slug || 'number'; W.subtopic = w.subtopic_slug || ''; W.desc = w.description || '';
+				W.pdf = w.pdf ? { id: w.pdf.id, filename: w.pdf.name, label: w.pdf.label, keep: true } : null;
+				W.ans = w.answers ? { id: w.answers.id, filename: w.answers.name, keep: true } : null;
+				S.ws = W;
+				go('worksheets');
+			}).catch(function (e) { root.classList.remove('st-busy'); toast(e.message); });
 			return;
 		}
 		if (it.kind === 'Lesson' || it.kind === 'Quiz' || it.kind === 'Worksheet') {
@@ -339,16 +391,19 @@
 		if (e.target.matches('[data-yt]')) { S.lesson.yt = e.target.value; }
 		if (e.target.matches('[data-quiz-text]')) { S.lesson.quizText = e.target.value; S.lesson.quizResult = null; }
 		if (e.target.matches('[data-ed="date"]')) { S.ed.date = e.target.value; S.ed.error = ''; render(); }
+		if (e.target.matches('[data-ws-title]')) { S.ws.title = e.target.value; S.ws.error = ''; var t = root.querySelector('.st-preview__title'); if (t) { t.textContent = S.ws.title || 'Untitled worksheet'; } }
+		if (e.target.matches('[data-ws-desc]')) { S.ws.desc = e.target.value; }
 	});
 	root.addEventListener('change', function (e) {
 		var el = e.target, L = S.lesson;
 		if (el.matches('[data-pdf]')) {
 			var key = el.getAttribute('data-pdf'), file = el.files && el.files[0];
 			if (!file) { return; }
-			var target = key === 'qp' || key === 'ms' ? S.pp : L;
+			var target = key === 'qp' || key === 'ms' ? S.pp : (key === 'wspdf' || key === 'wsans' ? S.ws : L);
+			var prop = key === 'wspdf' ? 'pdf' : (key === 'wsans' ? 'ans' : key);
 			root.classList.add('st-busy');
-			upload(file, 'pdf').then(function (info) { root.classList.remove('st-busy'); target[key] = info; if (target === S.pp) { S.pp.error = ''; } render(); })
-				.catch(function (err) { root.classList.remove('st-busy'); if (target === S.pp) { S.pp.error = err.message; } else { toast(err.message); } render(); });
+			upload(file, 'pdf').then(function (info) { root.classList.remove('st-busy'); target[prop] = info; if (target !== L) { target.error = ''; } render(); })
+				.catch(function (err) { root.classList.remove('st-busy'); if (target !== L) { target.error = err.message; } else { toast(err.message); } render(); });
 		} else if (el.matches('[data-quiz-file]')) {
 			var qf = el.files && el.files[0];
 			if (!qf) { return; }
@@ -366,7 +421,7 @@
 	});
 	root.addEventListener('click', function (e) {
 		var el, L = S.lesson, P = S.pp, E = S.ed;
-		if ((el = e.target.closest('[data-go]'))) { e.preventDefault(); if (el.getAttribute('data-go') === 'lesson' && L.published) { S.lesson = freshLesson(); } go(el.getAttribute('data-go')); return; }
+		if ((el = e.target.closest('[data-go]'))) { e.preventDefault(); if (el.getAttribute('data-go') === 'lesson' && L.published) { S.lesson = freshLesson(); } if (el.getAttribute('data-go') === 'worksheets' && S.ws.published) { S.ws = freshWorksheet(); } go(el.getAttribute('data-go')); return; }
 		if ((el = e.target.closest('[data-sync]'))) {
 			S.syncing = true; render();
 			api('studio/sync', { method: 'POST' }).then(function (r) { S.syncing = false; S.synced = r.ok; S.playlists = r.playlists; S.sync = r.state; if (!r.ok) { toast(r.error || 'The playlists couldn’t be checked just now.'); } render(); })
@@ -407,6 +462,23 @@
 			api('studio/content/' + ld.item.id + '/restore', { method: 'POST' }).then(refreshContent).catch(function (err) { toast(err.message); });
 			return;
 		}
+		// Standalone worksheet
+		var W = S.ws;
+		if ((el = e.target.closest('[data-wslevel]'))) { W.level = el.getAttribute('data-wslevel'); render(); return; }
+		if ((el = e.target.closest('[data-wstopic]'))) { W.topic = el.getAttribute('data-wstopic'); W.subtopic = ''; render(); return; }
+		if ((el = e.target.closest('[data-wssubtopic]'))) { var ss = el.getAttribute('data-wssubtopic'); W.subtopic = W.subtopic === ss ? '' : ss; render(); return; }
+		if ((el = e.target.closest('[data-publish-ws]'))) {
+			W.title = (root.querySelector('[data-ws-title]') || { value: W.title }).value.trim();
+			W.desc = (root.querySelector('[data-ws-desc]') || { value: W.desc }).value;
+			if (!W.title) { W.error = 'Give the worksheet a name first — that’s what students will see.'; render(); root.querySelector('[data-ws-title]').focus(); return; }
+			W.publishing = true; W.error = ''; render();
+			var wbody = { id: W.id, title: W.title, level: W.level, topic: W.subtopic || W.topic, description: W.desc, answers: W.ans ? W.ans.id : 0 };
+			if (W.pdf && !W.pdf.keep) { wbody.pdf = W.pdf.id; }
+			api('studio/worksheets', { method: 'POST', body: wbody }).then(function (d) { W.publishing = false; W.published = d; refreshContent(); render(); })
+				.catch(function (err) { W.publishing = false; W.error = err.message; render(); });
+			return;
+		}
+		if ((el = e.target.closest('[data-reset-ws]'))) { S.ws = freshWorksheet(); render(); return; }
 		// Past papers
 		if ((el = e.target.closest('[data-series]'))) { P.series = el.getAttribute('data-series'); render(); return; }
 		if ((el = e.target.closest('[data-tier]'))) { P.tier = el.getAttribute('data-tier'); render(); return; }
@@ -447,7 +519,7 @@
 	});
 	document.addEventListener('click', function (e) {
 		var a = e.target.closest('[data-studio-nav] [data-view]');
-		if (a) { e.preventDefault(); if (a.getAttribute('data-view') === 'lesson' && S.lesson.published) { S.lesson = freshLesson(); } go(a.getAttribute('data-view')); }
+		if (a) { e.preventDefault(); if (a.getAttribute('data-view') === 'lesson' && S.lesson.published) { S.lesson = freshLesson(); } if (a.getAttribute('data-view') === 'worksheets' && S.ws.published) { S.ws = freshWorksheet(); } go(a.getAttribute('data-view')); }
 	});
 
 	if (B.editId) { editItem(B.editId); } else { render(); }

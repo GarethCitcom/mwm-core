@@ -9,7 +9,7 @@ $user   = wp_get_current_user();
 $name   = $user->first_name ?: ( $user->display_name ?: $user->user_login );
 $name   = explode( ' ', trim( $name ) )[0];
 $theme  = get_theme_file_uri( 'assets/img' );
-$views  = [ 'dash' => 'Dashboard', 'lesson' => 'Add a lesson', 'content' => 'Your content', 'papers' => 'Past papers', 'dates' => 'Exam dates' ];
+$views  = [ 'dash' => 'Dashboard', 'lesson' => 'Add a lesson', 'worksheets' => 'Add a worksheet', 'content' => 'Your content', 'papers' => 'Past papers', 'dates' => 'Exam dates' ];
 $active = sanitize_key( (string) get_query_var( 'mwm_studio_view' ) ) ?: 'dash';
 ?>
 <!DOCTYPE html>

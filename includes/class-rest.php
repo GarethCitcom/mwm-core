@@ -43,6 +43,8 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/video', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_video' ] ] ) );
 		register_rest_route( $ns, '/studio/lessons', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_lesson' ] ] ) );
 		register_rest_route( $ns, '/studio/lessons/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_lesson' ] ] ) );
+		register_rest_route( $ns, '/studio/worksheets', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_worksheet' ] ] ) );
+		register_rest_route( $ns, '/studio/worksheets/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_worksheet' ] ] ) );
 		register_rest_route( $ns, '/studio/upload', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_upload' ] ] ) );
 		register_rest_route( $ns, '/studio/quiz/validate', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_validate_quiz' ] ] ) );
 		register_rest_route( $ns, '/studio/past-papers', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_past_paper' ] ] ) );
@@ -270,6 +272,80 @@ class MWM_REST {
 			delete_post_meta( $id, '_mwm_quiz_id' );
 		}
 		return rest_ensure_response( mwm_lesson_card( $id ) );
+	}
+
+	public static function studio_get_worksheet( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$id = (int) $r['id'];
+		if ( get_post_type( $id ) !== 'mwm_worksheet' ) {
+			return new WP_Error( 'not_found', 'Worksheet not found', [ 'status' => 404 ] );
+		}
+		$d = mwm_worksheet_data( $id, false );
+		$d['description'] = wp_strip_all_tags( get_post_field( 'post_content', $id ) );
+		return rest_ensure_response( $d );
+	}
+
+	/**
+	 * Create or update a standalone worksheet (one not made through the lesson wizard).
+	 */
+	public static function studio_save_worksheet( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$p     = (array) $r->get_json_params();
+		$id    = (int) ( $p['id'] ?? 0 );
+		$title = sanitize_text_field( (string) ( $p['title'] ?? '' ) );
+		$level = sanitize_key( (string) ( $p['level'] ?? '' ) );
+		$topic = sanitize_title( (string) ( $p['topic'] ?? '' ) );
+		$pdf   = (int) ( $p['pdf'] ?? 0 );
+		$ans   = (int) ( $p['answers'] ?? 0 );
+		$desc  = sanitize_textarea_field( (string) ( $p['description'] ?? '' ) );
+		if ( $id && get_post_type( $id ) !== 'mwm_worksheet' ) {
+			return new WP_Error( 'not_found', 'Worksheet not found', [ 'status' => 404 ] );
+		}
+		if ( ! $title ) {
+			return new WP_Error( 'missing_title', 'Give the worksheet a name first — that’s what students will see.', [ 'status' => 400 ] );
+		}
+		if ( ! $id && ! $pdf ) {
+			return new WP_Error( 'missing_pdf', 'Add the worksheet PDF first.', [ 'status' => 400 ] );
+		}
+		if ( $pdf && get_post_type( $pdf ) !== 'attachment' ) {
+			$pdf = 0;
+		}
+		if ( $ans && get_post_type( $ans ) !== 'attachment' ) {
+			$ans = 0;
+		}
+		$postarr = [ 'post_type' => 'mwm_worksheet', 'post_status' => 'publish', 'post_title' => $title ];
+		if ( array_key_exists( 'description', $p ) ) {
+			$postarr['post_content'] = $desc ? wpautop( $desc ) : '';
+		}
+		if ( $id ) {
+			$postarr['ID'] = $id;
+			$id = (int) wp_update_post( $postarr, true );
+		} else {
+			$id = (int) wp_insert_post( $postarr, true );
+		}
+		if ( is_wp_error( $id ) || ! $id ) {
+			return new WP_Error( 'save_failed', 'Something went wrong saving the worksheet. Try again in a moment.', [ 'status' => 500 ] );
+		}
+		if ( $pdf ) {
+			update_post_meta( $id, 'pdf', $pdf );
+			wp_update_post( [ 'ID' => $pdf, 'post_parent' => $id ] );
+		}
+		if ( array_key_exists( 'answers', $p ) ) {
+			if ( $ans ) {
+				update_post_meta( $id, 'answers', $ans );
+				wp_update_post( [ 'ID' => $ans, 'post_parent' => $id ] );
+			} else {
+				delete_post_meta( $id, 'answers' );
+			}
+		}
+		if ( $level && isset( mwm_levels()[ $level ] ) ) {
+			wp_set_object_terms( $id, $level, 'mwm_level' );
+		}
+		if ( $topic ) {
+			$term = get_term_by( 'slug', $topic, 'mwm_topic' );
+			if ( $term ) {
+				wp_set_object_terms( $id, (int) $term->term_id, 'mwm_topic' );
+			}
+		}
+		return rest_ensure_response( mwm_worksheet_data( $id, false ) );
 	}
 
 	/**
