@@ -63,10 +63,15 @@ class MWM_Settings {
 	}
 
 	public static function register(): void {
+		register_setting( 'mwm_core', MWM_Coming_Soon::OPTION, [ 'type' => 'string', 'sanitize_callback' => [ __CLASS__, 'sanitize_checkbox' ], 'default' => '1' ] );
 		register_setting( 'mwm_core', self::OPTION_API_KEY, [ 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ] );
 		register_setting( 'mwm_core', self::OPTION_CHANNEL, [ 'type' => 'string', 'sanitize_callback' => 'esc_url_raw', 'default' => 'https://www.youtube.com/@mathswithmelissa' ] );
 		register_setting( 'mwm_core', self::OPTION_PLAYLISTS, [ 'type' => 'array', 'sanitize_callback' => [ __CLASS__, 'sanitize_playlists' ] ] );
 		register_setting( 'mwm_core', 'mwm_redirect_map', [ 'type' => 'array', 'sanitize_callback' => [ __CLASS__, 'sanitize_redirects' ] ] );
+	}
+
+	public static function sanitize_checkbox( $value ): string {
+		return $value ? '1' : '0';
 	}
 
 	public static function sanitize_playlists( $value ): array {
@@ -115,6 +120,19 @@ class MWM_Settings {
 			<?php endif; ?>
 			<form method="post" action="options.php">
 				<?php settings_fields( 'mwm_core' ); ?>
+				<h2>Site visibility</h2>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row">Coming soon mode</th>
+						<td>
+							<label for="mwm_coming_soon">
+								<input type="checkbox" id="mwm_coming_soon" name="<?php echo esc_attr( MWM_Coming_Soon::OPTION ); ?>" value="1" <?php checked( get_option( MWM_Coming_Soon::OPTION, '1' ), '1' ); ?>>
+								Hide the site behind a Coming Soon page
+							</label>
+							<p class="description">While ticked, visitors who aren't logged in see a branded holding page and the public API is closed. Log in at <code>/wp-login.php</code> to see the full site. Untick and save to launch.</p>
+						</td>
+					</tr>
+				</table>
 				<h2>YouTube</h2>
 				<table class="form-table" role="presentation">
 					<tr>

@@ -21,6 +21,7 @@ require_once MWM_CORE_DIR . 'includes/helpers.php';
 require_once MWM_CORE_DIR . 'includes/class-post-types.php';
 require_once MWM_CORE_DIR . 'includes/class-fields.php';
 require_once MWM_CORE_DIR . 'includes/class-settings.php';
+require_once MWM_CORE_DIR . 'includes/class-coming-soon.php';
 require_once MWM_CORE_DIR . 'includes/class-progress.php';
 require_once MWM_CORE_DIR . 'includes/class-quiz.php';
 require_once MWM_CORE_DIR . 'includes/class-youtube.php';
@@ -41,6 +42,7 @@ add_action( 'plugins_loaded', static function () {
 	MWM_Post_Types::init();
 	MWM_Fields::init();
 	MWM_Settings::init();
+	MWM_Coming_Soon::init();
 	MWM_Progress::init();
 	MWM_Quiz::init();
 	MWM_YouTube::init();

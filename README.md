@@ -41,6 +41,7 @@ Public: `lessons`, `topics`, `pathway`, `exam-dates`, `quiz/{id}`. Signed-in: `m
 
 ## Settings → Maths with Melissa
 
+* **Coming soon mode** — on by default. While ticked, visitors who aren't logged in get a branded holding page (503 + noindex, logo and fonts from the theme when present) and the whole REST API rejects logged-out requests, so nothing leaks around the gate. `wp-login.php` stays open; anyone logged in sees the full site and admins get a toolbar reminder. Untick and save to launch.
 * **YouTube Data API key** — used by the daily sync and to fetch video length/date in the Studio. Without a key the Studio falls back to oEmbed (title + thumbnail) and a best-effort read of the watch page.
 * **Playlist IDs** — Quick Maths (Shorts), Roblox, Minecraft, Story. The sync runs daily at 3 am (WP-Cron hook `mwm_daily_playlist_sync`) and upserts videos as `mwm_lesson` posts keyed on `youtube_id`. Videos removed from a playlist go back to draft. Level/topic are guessed from the topic terms' keyword meta and never overwrite manual edits.
 * **Redirects** — the 301 map from old URLs (filled by the import).
