@@ -74,6 +74,7 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/content', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_content' ] ] ) );
 		register_rest_route( $ns, '/studio/content/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'DELETE', 'callback' => [ __CLASS__, 'studio_trash' ] ] ) );
 		register_rest_route( $ns, '/studio/content/(?P<id>\d+)/restore', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_restore' ] ] ) );
+		register_rest_route( $ns, '/studio/content/(?P<id>\d+)/level', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_set_level' ] ] ) );
 		register_rest_route( $ns, '/studio/sync', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_sync' ] ] ) );
 		register_rest_route( $ns, '/studio/dashboard', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_dashboard' ] ] ) );
 	}
@@ -813,6 +814,9 @@ class MWM_REST {
 					'flags' => $flags,
 					'status' => $is_draft ? 'draft' : 'publish',
 					'url'   => $c['url'],
+					'thumb'      => $c['thumb'],
+					'youtube_id' => $vbad ? '' : $c['youtube_id'],
+					'level_slug' => mwm_get_term_slug( $c['id'], 'mwm_level' ),
 					'date'  => get_post_field( 'post_date', $c['id'] ),
 					'added' => 'Lesson · added ' . mwm_relative_label( get_post_field( 'post_date', $c['id'] ) ),
 				];
@@ -933,6 +937,27 @@ class MWM_REST {
 		wp_untrash_post( $id );
 		wp_update_post( [ 'ID' => $id, 'post_status' => 'publish' ] );
 		return rest_ensure_response( [ 'ok' => true, 'id' => $id ] );
+	}
+
+	/**
+	 * Quick level change from the content list (no need to open the lesson wizard).
+	 */
+	public static function studio_set_level( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$id    = (int) $r['id'];
+		$p     = (array) $r->get_json_params();
+		$level = sanitize_key( (string) ( $p['level'] ?? '' ) );
+		if ( get_post_type( $id ) !== 'mwm_lesson' ) {
+			return new WP_Error( 'not_found', 'Lesson not found', [ 'status' => 404 ] );
+		}
+		if ( ! isset( mwm_levels()[ $level ] ) ) {
+			return new WP_Error( 'bad_level', 'Pick a level from the list.', [ 'status' => 400 ] );
+		}
+		$set = wp_set_object_terms( $id, $level, 'mwm_level' );
+		if ( is_wp_error( $set ) ) {
+			return new WP_Error( 'save_failed', 'The level couldn’t be saved just now. Try again in a moment.', [ 'status' => 500 ] );
+		}
+		delete_post_meta( $id, 'needs_level_review' ); // Kym has chosen a level in the Studio.
+		return rest_ensure_response( [ 'ok' => true, 'id' => $id, 'level' => $level, 'level_name' => mwm_level_name( $level ) ] );
 	}
 
 	public static function studio_sync(): WP_REST_Response {

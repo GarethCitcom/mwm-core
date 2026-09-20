@@ -28,6 +28,29 @@
 		return '<button type="button" class="mwm-chip mwm-chip--md' + (on ? ' is-on' : '') + (cls ? ' ' + cls : '') + '" aria-pressed="' + (on ? 'true' : 'false') + '"' + d + '>' + esc(label) + '</button>';
 	}
 	function tag(text, cls) { return '<span class="mwm-tag ' + cls + '">' + esc(text) + '</span>'; }
+	/* Video thumbnail that opens a larger version in a popup — Kym reads a lot from the thumbnail alone. */
+	function thumbBtn(url, cls, title, link) {
+		if (!url) { return '<span class="' + cls + '"></span>'; }
+		return '<button type="button" class="' + cls + ' st-thumbbtn" style="background-image:url(' + esc(url) + ')" data-zoom="' + esc(url) + '" data-zoom-title="' + esc(title || '') + '" data-zoom-link="' + esc(link || '') + '" title="Click to see it bigger" aria-label="See the thumbnail bigger"><span class="st-thumbbtn__hint" aria-hidden="true">' + icon('search') + '</span></button>';
+	}
+	function watchUrl(ytId) { return ytId ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(ytId) : ''; }
+	function zoomOpen(url, title, link) {
+		zoomClose();
+		var box = document.createElement('div');
+		box.className = 'st-zoom'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', 'Video thumbnail');
+		box.innerHTML = '<div class="st-zoom__card"><img class="st-zoom__img" src="' + esc(url) + '" alt="' + esc(title || 'Video thumbnail') + '">' +
+			(title || link ? '<div class="st-zoom__foot">' + (title ? '<span class="st-zoom__title">' + esc(title) + '</span>' : '') + (link ? '<a class="st-zoom__link" href="' + esc(link) + '" target="_blank" rel="noopener">' + icon('play') + 'Play on YouTube</a>' : '') + '</div>' : '') +
+			'<button type="button" class="st-zoom__close" data-zoom-close aria-label="Close">×</button></div>';
+		box.addEventListener('click', function (e) { if (!e.target.closest('.st-zoom__img, .st-zoom__link')) { zoomClose(); } });
+		document.body.appendChild(box);
+		document.body.classList.add('st-zoom-open');
+		box.querySelector('[data-zoom-close]').focus();
+	}
+	function zoomClose() {
+		var z = document.querySelector('.st-zoom');
+		if (z) { z.remove(); document.body.classList.remove('st-zoom-open'); }
+	}
+	document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.querySelector('.st-zoom')) { e.preventDefault(); zoomClose(); } });
 	/* Searchable subtopic picker: type to filter, pick one, or create a new one under the chosen topic. */
 	function picker(key, topic, value) {
 		var sel = topic ? topic.subtopics.filter(function (s) { return s.slug === value; })[0] : null;
@@ -83,6 +106,9 @@
 		if (name === 'download') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5"></path><line x1="3" y1="13" x2="13" y2="13"></line></svg>'; }
 		if (name === 'route') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><circle cx="3.5" cy="3.5" r="1.5"></circle><circle cx="12.5" cy="12.5" r="1.5"></circle><path d="M5 3.5h4a2.5 2.5 0 0 1 0 5H7a2.5 2.5 0 0 0 0 5h4"></path></svg>'; }
 		if (name === 'calendar') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><rect x="2" y="3" width="12" height="11" rx="2"></rect><line x1="2" y1="6.5" x2="14" y2="6.5"></line><line x1="5.5" y1="1.5" x2="5.5" y2="4"></line><line x1="10.5" y1="1.5" x2="10.5" y2="4"></line></svg>'; }
+		if (name === 'paper') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><path d="M4 2h5.5L13 5.5V14H4z"></path><path d="M9.5 2v3.5H13"></path><path d="M6 8.5h4M6 11h4"></path></svg>'; }
+		if (name === 'quiz') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><circle cx="8" cy="8" r="6"></circle><path d="M6.2 6.3a1.8 1.8 0 1 1 2.6 1.6c-.5.3-.8.6-.8 1.2"></path><circle cx="8" cy="11.3" r="0.4" fill="currentColor"></circle></svg>'; }
+		if (name === 'search') { return '<svg width="16" height="16" viewBox="0 0 16 16" ' + p + '><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14M7 5v4M5 7h4"></path></svg>'; }
 		if (name === 'tick') { return '<svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg>'; }
 		return '';
 	}
@@ -102,7 +128,7 @@
 	var S = {
 		view: B.view || 'dash',
 		playlists: B.playlists, sync: B.sync, synced: false, syncing: false, recent: B.recent,
-		content: B.content, kindFilter: 'All', issueFilter: '', confirmId: null, lastDeleted: null,
+		content: B.content, kindFilter: 'All', issueFilter: '', confirmId: null, lastDeleted: null, levelBusy: null,
 		lesson: freshLesson(),
 		pp: freshPaper({}),
 		pw: freshPathway(),
@@ -163,7 +189,7 @@
 			if (L.video) {
 				var v = L.video;
 				var meta = [v.duration_label, v.published_label ? 'uploaded ' + v.published_label : ''].filter(Boolean).join(' · ');
-				html += '<div class="st-found"><span class="st-found__thumb" style="background-image:url(' + esc(v.thumbnail) + ')"></span><div><div class="st-found__title">' + esc(v.title) + '</div><div class="st-found__meta">' + esc(meta || 'Length will show once published') + '</div>' +
+				html += '<div class="st-found">' + thumbBtn(v.thumbnail, 'st-found__thumb', v.title, watchUrl(v.id)) + '<div><div class="st-found__title">' + esc(v.title) + '</div><div class="st-found__meta">' + esc(meta || 'Length will show once published') + '</div>' +
 					(v.existing_id && v.existing_id !== L.id ? '<div class="st-error" style="margin-top:4px">This video is already on the site. <button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-edit-lesson="' + v.existing_id + '">Edit that lesson instead</button></div>' : '<div class="st-found__ok">✓ Found it — that’s the one?</div>') + '</div></div>';
 				if (v.warning) { html += '<p class="st-note">' + esc(v.warning) + '</p>'; }
 			}
@@ -171,6 +197,9 @@
 		}
 		if (L.step === 2) {
 			var topic = B.topics.filter(function (t) { return t.slug === L.topic; })[0];
+			if (L.video) {
+				html += '<div class="st-found st-found--compact">' + thumbBtn(L.video.thumbnail, 'st-found__thumb', L.video.title, watchUrl(L.video.id)) + '<div><div class="st-found__title">' + esc(L.video.title) + '</div><div class="st-found__meta">' + esc([L.video.duration_label, L.video.published_label ? 'uploaded ' + L.video.published_label : ''].filter(Boolean).join(' · ') || 'On YouTube') + '</div></div></div>';
+			}
 			html += '<div class="st-panel"><h2>What’s it called?</h2><p class="st-panel__sub">Students see this as the lesson title. It starts as the YouTube title — shorten it or tidy it up if you like.</p>' +
 				'<div class="st-inputrow" style="margin-top:12px"><input type="text" class="st-input" value="' + esc(lessonTitle()) + '" placeholder="e.g. Solving quadratics by factorising" aria-label="Lesson title" maxlength="140" data-lesson-title></div>' +
 				(L.video && L.title && L.title !== L.video.title ? '<p class="st-note st-note--8">On YouTube it’s “' + esc(L.video.title) + '” — <button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-title-reset>use that instead</button></p>' : '') + '</div>';
@@ -211,7 +240,7 @@
 				var extras = [L.ws ? 'Worksheet' : '', L.ans ? 'Answers' : '', L.quizResult && L.quizResult.ok ? 'Quiz (' + L.quizResult.questions.length + ' questions)' : ''].filter(Boolean);
 				var mins = L.video && L.video.minutes_label ? L.video.minutes_label : '';
 				html += '<div class="st-panel"><h2>Check it, then publish</h2><p class="st-panel__sub">This is exactly how students will see it.</p>' +
-					'<div class="st-preview"><span class="st-preview__thumb" style="background-image:url(' + esc(L.video ? L.video.thumbnail : '') + ')"></span><div class="st-preview__body"><div class="mwm-tags">' + tag(levelName(L.level), 'mwm-tag--higher') + tag(topicName(L.subtopic || L.topic), 'mwm-tag--outline') + '</div>' +
+					'<div class="st-preview">' + thumbBtn(L.video ? L.video.thumbnail : '', 'st-preview__thumb', L.video ? L.video.title : '', L.video ? watchUrl(L.video.id) : '') + '<div class="st-preview__body"><div class="mwm-tags">' + tag(levelName(L.level), 'mwm-tag--higher') + tag(topicName(L.subtopic || L.topic), 'mwm-tag--outline') + '</div>' +
 					'<div class="st-preview__title">' + esc(lessonTitle()) + '</div><div class="st-preview__meta">' + esc([mins].concat(extras).filter(Boolean).join(' · ')) + '</div></div></div>' +
 					'<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish" data-publish' + (L.publishing ? ' disabled' : '') + '>' + (L.publishing ? 'Publishing…' : (L.id ? 'Publish changes' : 'Publish lesson')) + '</button>' +
 					(L.publishError ? '<p class="st-error">' + esc(L.publishError) + '</p>' : '') +
@@ -314,9 +343,23 @@
 					? '<span class="st-confirm-text">Remove from the site?</span><button type="button" class="st-smallbtn st-smallbtn--danger" data-remove="' + r.id + '">Yes, remove</button><button type="button" class="st-smallbtn st-smallbtn--keep" data-keep>Keep it</button>'
 					: '<button type="button" class="st-smallbtn" data-edit="' + r.id + '">Edit</button><button type="button" class="st-smallbtn st-smallbtn--quiet" data-ask-remove="' + r.id + '">Remove</button>';
 				var flags = (r.flags || []).map(function (f) { return tag(issueTag(f), 'mwm-tag--warn mwm-tag--sm' + (S.issueFilter === f ? ' is-on' : '')); }).join('');
-				return '<div class="st-list__row st-list__row--16"><div class="st-list__main"><div class="st-list__name">' + esc(r.title) + '</div><div class="st-list__sub">' + esc(r.meta) + '</div>' + (flags ? '<div class="st-list__flags">' + flags + '</div>' : '') + '</div>' + tag(r.kind, 'mwm-tag--outline mwm-tag--sm') + actions + '</div>';
+				var quick = r.kind === 'Lesson' ? '<div class="st-qlevels' + (S.levelBusy === r.id ? ' is-busy' : '') + '" role="group" aria-label="Level"><span class="st-qlevels__label">Level</span>' + B.levels.map(function (l) {
+					return '<button type="button" class="st-qlevel' + (r.level_slug === l.slug ? ' is-on' : '') + '" aria-pressed="' + (r.level_slug === l.slug ? 'true' : 'false') + '" data-qlevel="' + esc(l.slug) + '" data-id="' + r.id + '"' + (S.levelBusy === r.id ? ' disabled' : '') + '>' + esc(l.name.replace(/^GCSE /, '')) + '</button>';
+				}).join('') + (!r.level_slug ? '<span class="st-qlevels__hint">not set yet</span>' : '') + '</div>' : '';
+				return '<div class="st-list__row st-list__row--16">' + listMedia(r) + '<div class="st-list__main"><div class="st-list__name">' + esc(r.title) + '</div><div class="st-list__sub">' + esc(r.meta) + '</div>' + (flags ? '<div class="st-list__flags">' + flags + '</div>' : '') + quick + '</div>' + tag(r.kind, 'mwm-tag--outline mwm-tag--sm') + actions + '</div>';
 			}).join('') : '<div class="st-list__row"><span class="mwm-meta">' + (S.issueFilter ? 'Nothing needs attention here — nice.' : 'Nothing here yet.') + '</span></div>') + '</div>' +
 			'<p class="st-note st-note--16">Removing a lesson never deletes your video — it stays safe on YouTube.</p>';
+	}
+
+	/* Left-hand cell on a content row: the video thumbnail (click to enlarge, play badge to YouTube) or an icon for everything else. */
+	var KIND_ICON = { 'Lesson': 'play', 'Worksheet': 'worksheet', 'Past paper': 'paper', 'Exam date': 'calendar', 'Quiz': 'quiz', 'Pathway': 'route' };
+	function listMedia(r) {
+		if (r.kind === 'Lesson' && r.thumb) {
+			var link = watchUrl(r.youtube_id);
+			return '<div class="st-list__media">' + thumbBtn(r.thumb, 'st-list__thumb', r.title, link) +
+				(link ? '<a class="st-list__play" href="' + esc(link) + '" target="_blank" rel="noopener" title="Play on YouTube" aria-label="Play on YouTube">' + icon('play') + '</a>' : '') + '</div>';
+		}
+		return '<div class="st-list__media"><span class="st-list__icon" aria-hidden="true">' + icon(KIND_ICON[r.kind] || 'paper') + '</span></div>';
 	}
 
 	function viewWorksheet() {
@@ -825,6 +868,7 @@
 		if ((el = e.target.closest('[data-picker-pick]'))) { var pbox = el.closest('[data-picker]'); pickerState(pbox.getAttribute('data-picker')).subtopic = el.getAttribute('data-picker-pick'); render(); return; }
 		if ((el = e.target.closest('[data-picker-create]'))) { pickerCreate(el.closest('[data-picker]'), el.getAttribute('data-picker-create')); return; }
 		if ((el = e.target.closest('[data-picker-clear]'))) { pickerState(el.closest('[data-picker]').getAttribute('data-picker')).subtopic = ''; render(); return; }
+		if ((el = e.target.closest('[data-zoom]'))) { zoomOpen(el.getAttribute('data-zoom'), el.getAttribute('data-zoom-title'), el.getAttribute('data-zoom-link')); return; }
 		// Lesson wizard
 		if ((el = e.target.closest('[data-title-reset]'))) { L.title = L.video ? L.video.title : ''; render(); return; }
 		if ((el = e.target.closest('[data-level]'))) { L.level = el.getAttribute('data-level'); render(); return; }
@@ -842,6 +886,17 @@
 		// Content
 		if ((el = e.target.closest('[data-kind]'))) { S.kindFilter = el.getAttribute('data-kind'); S.issueFilter = ''; S.confirmId = null; render(); return; }
 		if ((el = e.target.closest('[data-issue]'))) { var iss = el.getAttribute('data-issue'); S.issueFilter = S.issueFilter === iss ? '' : iss; S.confirmId = null; render(); return; }
+		if ((el = e.target.closest('[data-qlevel]'))) {
+			var qid = Number(el.getAttribute('data-id')), qlevel = el.getAttribute('data-qlevel');
+			var qrow = S.content.filter(function (x) { return x.id === qid; })[0];
+			if (!qrow || qrow.level_slug === qlevel || S.levelBusy) { return; }
+			S.levelBusy = qid; render();
+			api('studio/content/' + qid + '/level', { method: 'POST', body: { level: qlevel } }).then(function (d) {
+				qrow.level_slug = d.level; qrow.flags = (qrow.flags || []).filter(function (f) { return f !== 'level'; }); S.levelBusy = null;
+				toast('Level changed to ' + d.level_name); render(); refreshContent();
+			}).catch(function (err) { S.levelBusy = null; toast(err.message); render(); });
+			return;
+		}
 		if ((el = e.target.closest('[data-edit]'))) { editItem(Number(el.getAttribute('data-edit'))); return; }
 		if ((el = e.target.closest('[data-ask-remove]'))) { S.confirmId = Number(el.getAttribute('data-ask-remove')); render(); return; }
 		if ((el = e.target.closest('[data-keep]'))) { S.confirmId = null; render(); return; }
