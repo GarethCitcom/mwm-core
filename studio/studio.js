@@ -106,6 +106,9 @@
 		if (name === 'download') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5"></path><line x1="3" y1="13" x2="13" y2="13"></line></svg>'; }
 		if (name === 'route') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><circle cx="3.5" cy="3.5" r="1.5"></circle><circle cx="12.5" cy="12.5" r="1.5"></circle><path d="M5 3.5h4a2.5 2.5 0 0 1 0 5H7a2.5 2.5 0 0 0 0 5h4"></path></svg>'; }
 		if (name === 'calendar') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><rect x="2" y="3" width="12" height="11" rx="2"></rect><line x1="2" y1="6.5" x2="14" y2="6.5"></line><line x1="5.5" y1="1.5" x2="5.5" y2="4"></line><line x1="10.5" y1="1.5" x2="10.5" y2="4"></line></svg>'; }
+		if (name === 'star') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z"></path></svg>'; }
+		if (name === 'up') { return '<svg width="14" height="14" viewBox="0 0 16 16" ' + p + '><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5"></path></svg>'; }
+		if (name === 'down') { return '<svg width="14" height="14" viewBox="0 0 16 16" ' + p + '><path d="M8 3v10M3.5 8.5L8 13l4.5-4.5"></path></svg>'; }
 		if (name === 'paper') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><path d="M4 2h5.5L13 5.5V14H4z"></path><path d="M9.5 2v3.5H13"></path><path d="M6 8.5h4M6 11h4"></path></svg>'; }
 		if (name === 'quiz') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><circle cx="8" cy="8" r="6"></circle><path d="M6.2 6.3a1.8 1.8 0 1 1 2.6 1.6c-.5.3-.8.6-.8 1.2"></path><circle cx="8" cy="11.3" r="0.4" fill="currentColor"></circle></svg>'; }
 		if (name === 'search') { return '<svg width="16" height="16" viewBox="0 0 16 16" ' + p + '><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14M7 5v4M5 7h4"></path></svg>'; }
@@ -137,8 +140,13 @@
 		sg: { filter: 'all', showHidden: false, confirmAll: false, busy: '', scanning: false, error: '' },
 		ws: freshWorksheet(),
 		ed: { paper: 'Paper 1 (non-calculator)', date: '', session: 'morning', level: 'gcse-higher', board: 'edexcel', checked: false, saving: false, error: '', dateConfirm: null },
-		dates: B.dates
+		dates: B.dates,
+		home: homeState(B.home)
 	};
+	function homeState(h) {
+		h = h || {};
+		return { hero: h.hero || null, heroTitle: h.hero_title || '', featured: (h.featured || []).slice(), autoHero: h.auto_hero || null, autoFeatured: h.auto_featured || [], max: h.max || 6, saving: false, saved: false, dirty: false, error: '', found: {} };
+	}
 
 	/* ---------------------------------------------------------------- views */
 	function viewDash() {
@@ -157,6 +165,7 @@
 					'<button type="button" class="mwm-btn ' + (c.primary ? 'mwm-btn--primary' : 'mwm-btn--secondary') + '" data-go="' + c.view + '">Start</button></div>';
 			}).join('') + '</div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('play') + '</span><div class="st-card__text"><h2>Suggested from YouTube</h2><p>' + esc((S.suggestions.items || []).length ? (S.suggestions.items.length === 1 ? '1 video on your channel isn’t on the site yet.' : S.suggestions.items.length + ' videos on your channel aren’t on the site yet.') : 'We check your channel overnight for videos that aren’t on the site.') + '</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="suggestions">See suggestions<span aria-hidden="true">→</span></button></div>' +
+			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('star') + '</span><div class="st-card__text"><h2>Home page</h2><p>Choose the big lesson at the top of the home page (with a shorter title if you like) and the six lessons underneath.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="home">Choose lessons<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('route') + '</span><div class="st-card__text"><h2>Revision pathways</h2><p>The order students revise topics in, per level — with links to your lessons and an optional week-by-week plan.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="pathways">Edit pathways<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('calendar') + '</span><div class="st-card__text"><h2>Update exam dates</h2><p>Once a year, when the boards confirm them — verified dates appear on the exam calendar.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="dates">Update dates<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-tintbox"><div class="st-tintbox__head"><h2>Quick Maths &amp; Gaming look after themselves</h2><span class="mwm-meta">' + esc(status) + '</span></div>' +
@@ -561,6 +570,85 @@
 		}).catch(function (err) { P.publishing = false; P.error = err.message; render(); });
 	}
 
+	/* Home page picks: hero lesson (+ short title) and the featured grid. */
+	function lessonPicker(target, placeholder) {
+		return '<div class="st-picker st-picker--inline" data-lpick-box="' + target + '"><div class="st-picker__control"><input type="text" class="st-input st-picker__input" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-label="' + esc(placeholder) + '" placeholder="' + esc(placeholder) + '" autocomplete="off" data-lpick-input="' + target + '"><span class="st-picker__caret" aria-hidden="true">' + icon('search') + '</span></div><div class="st-picker__list" role="listbox" hidden data-lpick-list></div></div>';
+	}
+	function lpickSearch(box, q) {
+		var list = box.querySelector('[data-lpick-list]'), target = box.getAttribute('data-lpick-box'), H = S.home;
+		var mine = ++wsSearchSeq;
+		q = q.trim();
+		if (!q) { list.setAttribute('hidden', ''); box.classList.remove('is-open'); return; }
+		list.innerHTML = '<div class="st-picker__empty">Searching…</div>'; list.removeAttribute('hidden'); box.classList.add('is-open');
+		api('lessons?per_page=8&format=lesson&search=' + encodeURIComponent(q)).then(function (res) {
+			if (mine !== wsSearchSeq) { return; }
+			var taken = H.featured.map(function (c) { return c.id; });
+			var items = (res.items || []).filter(function (l) { return target !== 'featured' || taken.indexOf(l.id) < 0; });
+			items.forEach(function (l) { H.found[l.id] = l; });
+			list.innerHTML = items.length
+				? items.map(function (l) { return '<button type="button" class="st-picker__opt" role="option" data-lpick-choose="' + l.id + '" data-target="' + target + '">' + (l.thumb ? '<span class="st-picker__thumb" style="background-image:url(' + esc(l.thumb) + ')"></span>' : '') + esc(l.title) + '<span class="st-picker__hint">' + esc([l.level, l.subtopic || l.topic].filter(Boolean).join(' · ')) + '</span></button>'; }).join('')
+				: '<div class="st-picker__empty">No lessons match “' + esc(q) + '”.</div>';
+		}).catch(function () { list.innerHTML = '<div class="st-picker__empty">Couldn’t search just now — try again.</div>'; });
+	}
+	function homeCard(c, title) {
+		return '<div class="st-preview st-preview--home">' + thumbBtn(c.thumb, 'st-preview__thumb', c.title, watchUrl(c.youtube_id)) + '<div class="st-preview__body"><div class="mwm-tags">' + (c.level ? tag(c.level, 'mwm-tag--higher') : '') + (c.subtopic || c.topic ? tag(c.subtopic || c.topic, 'mwm-tag--outline') : '') + '</div>' +
+			'<div class="st-preview__title">' + esc(title || c.title) + '</div><div class="st-preview__meta">' + esc([c.duration, c.worksheet ? 'Worksheet' : '', c.quiz ? 'Quiz' : ''].filter(Boolean).join(' · ')) + '</div></div></div>';
+	}
+	function viewHome() {
+		var H = S.home;
+		var html = '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>' +
+			'<h1 class="st-h1 st-h1--after-back">Home page</h1>' +
+			'<p class="st-intro">Pick what visitors see first. Leave either section empty and the site shows your newest lessons automatically.</p>';
+
+		// Hero
+		html += '<div class="st-panel st-panel--24"><h2>The big lesson at the top</h2><p class="st-panel__sub">Shown large next to the welcome text, with a play button.</p>';
+		if (H.hero) {
+			html += '<div class="st-home"><div class="st-home__card">' + homeCard(H.hero, H.heroTitle) + '</div><div class="st-home__side">' +
+				'<div class="st-home__current">' + esc(H.hero.title) + '</div>' +
+				'<label class="st-label" for="st-hero-title">Short title <span style="font-weight:400;color:var(--muted)">(optional)</span></label>' +
+				'<input type="text" id="st-hero-title" class="st-input st-input--sm" maxlength="80" value="' + esc(H.heroTitle) + '" placeholder="e.g. Volume of a cuboid" data-home-title>' +
+				'<p class="st-note st-note--8">Long YouTube titles get squashed on the home page card. Type a shorter version here and it’s used there instead — the lesson itself keeps its full name.</p>' +
+				'<div class="st-home__actions"><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-home-hero-clear>Use the newest lesson instead</button></div>' +
+				'</div></div>';
+			html += '<div class="st-label st-label--24">Swap it for a different lesson</div>' + lessonPicker('hero', 'Search your lessons by name…');
+		} else {
+			html += '<div class="st-home"><div class="st-home__card">' + (H.autoHero ? homeCard(H.autoHero) : '<p class="mwm-meta">No lessons yet.</p>') + '</div><div class="st-home__side"><div class="st-home__auto">' + tag('Automatic', 'mwm-tag--outline mwm-tag--sm') + '<p class="st-note st-note--8">Nothing chosen, so the home page shows your newest lesson. Pick one below to fix it in place.</p></div></div></div>';
+			html += '<div class="st-label st-label--24">Choose a lesson</div>' + lessonPicker('hero', 'Search your lessons by name…');
+		}
+		html += '</div>';
+
+		// Featured grid
+		html += '<div class="st-panel st-panel--24"><h2>“Find your next lightbulb moment”</h2><p class="st-panel__sub">The grid of ' + H.max + ' lessons further down the home page. Put them in the order you want them shown.</p>';
+		if (H.featured.length) {
+			html += '<div class="st-list st-list--12">' + H.featured.map(function (c, i) {
+				return '<div class="st-list__row st-list__row--16">' + listMedia({ kind: 'Lesson', thumb: c.thumb, title: c.title, youtube_id: c.youtube_id }) +
+					'<div class="st-list__main"><div class="st-list__name">' + (i + 1) + '. ' + esc(c.title) + '</div><div class="st-list__sub">' + esc([c.level, c.subtopic || c.topic, c.duration].filter(Boolean).join(' · ')) + '</div></div>' +
+					'<div class="st-home__rowbtns"><button type="button" class="st-smallbtn st-smallbtn--xs st-smallbtn--keep" data-home-move="' + i + '" data-dir="-1" aria-label="Move up"' + (i === 0 ? ' disabled' : '') + '>' + icon('up') + '</button>' +
+					'<button type="button" class="st-smallbtn st-smallbtn--xs st-smallbtn--keep" data-home-move="' + i + '" data-dir="1" aria-label="Move down"' + (i === H.featured.length - 1 ? ' disabled' : '') + '>' + icon('down') + '</button>' +
+					'<button type="button" class="st-smallbtn st-smallbtn--xs st-smallbtn--quiet" data-home-remove="' + i + '">Remove</button></div></div>';
+			}).join('') + '</div>';
+			if (H.featured.length < H.max) { html += '<div class="st-label st-label--24">Add another (' + (H.max - H.featured.length) + ' more)</div>' + lessonPicker('featured', 'Search your lessons by name…'); }
+			else { html += '<p class="st-note st-note--16">That’s all ' + H.max + ' — remove one to add another.</p>'; }
+		} else {
+			html += '<div class="st-home__auto" style="margin-top:12px">' + tag('Automatic', 'mwm-tag--outline mwm-tag--sm') + '<p class="st-note st-note--8">Nothing chosen, so the grid shows your ' + H.max + ' newest lessons' + (H.autoFeatured.length ? ': ' + H.autoFeatured.map(function (c) { return c.title; }).join(', ') : '') + '.</p></div>';
+			html += '<div class="st-label st-label--24">Choose the first lesson</div>' + lessonPicker('featured', 'Search your lessons by name…');
+		}
+		html += '</div>';
+
+		html += '<div class="st-nav st-nav--home"><a href="' + esc(B.site) + '" target="_blank" rel="noopener" class="mwm-linkbtn mwm-linkbtn--sm">See the home page<span aria-hidden="true">→</span></a>' +
+			'<div><span class="st-home__status">' + (H.saving ? 'Saving…' : (H.dirty ? 'Not saved yet' : (H.saved ? '✓ Saved — it’s live on the home page' : ''))) + '</span>' +
+			'<button type="button" class="mwm-btn mwm-btn--primary" data-home-save' + (H.saving || !H.dirty ? ' disabled' : '') + '>Save home page</button></div></div>' +
+			(H.error ? '<p class="st-error">' + esc(H.error) + '</p>' : '');
+		return html;
+	}
+	function homeSave() {
+		var H = S.home;
+		H.saving = true; H.error = ''; render();
+		api('studio/home', { method: 'POST', body: { hero_lesson: H.hero ? H.hero.id : 0, hero_title: H.heroTitle, featured: H.featured.map(function (c) { return c.id; }) } }).then(function (d) {
+			S.home = homeState(d); S.home.saved = true; toast('Saved — the home page shows it now.'); render();
+		}).catch(function (err) { H.saving = false; H.error = err.message; render(); });
+	}
+
 	function viewDates() {
 		var E = S.ed;
 		var ready = !!(E.date && E.checked);
@@ -593,6 +681,7 @@
 			case 'worksheets': html = viewWorksheet(); break;
 			case 'papers': html = viewPapers(); break;
 			case 'dates': html = viewDates(); break;
+			case 'home': html = viewHome(); break;
 			case 'pathways': html = viewPathways(); break;
 			case 'suggestions': html = viewSuggestions(); break;
 			default: html = viewDash();
@@ -600,7 +689,7 @@
 		root.innerHTML = html;
 		document.querySelectorAll('[data-studio-nav] [data-view]').forEach(function (a) {
 			// Past papers, exam dates, pathways and suggestions live off the dashboard, so keep Dashboard lit while on them.
-			var on = a.getAttribute('data-view') === S.view || (a.getAttribute('data-view') === 'dash' && (S.view === 'papers' || S.view === 'dates' || S.view === 'pathways' || S.view === 'suggestions'));
+			var on = a.getAttribute('data-view') === S.view || (a.getAttribute('data-view') === 'dash' && (S.view === 'papers' || S.view === 'dates' || S.view === 'pathways' || S.view === 'suggestions' || S.view === 'home'));
 			a.classList.toggle('is-current', on);
 			if (on) { a.setAttribute('aria-current', 'page'); } else { a.removeAttribute('aria-current'); }
 		});
@@ -800,6 +889,8 @@
 		}
 	});
 	root.addEventListener('focusout', function (e) {
+		var lpbox = e.target.closest && e.target.closest('[data-lpick-box]');
+		if (lpbox && !(e.relatedTarget && lpbox.contains(e.relatedTarget))) { lpbox.querySelector('[data-lpick-list]').setAttribute('hidden', ''); lpbox.classList.remove('is-open'); return; }
 		var lbox = e.target.closest && e.target.closest('[data-pw-lesson-box]');
 		if (lbox && !(e.relatedTarget && lbox.contains(e.relatedTarget))) { lbox.querySelector('[data-pw-lesson-list]').setAttribute('hidden', ''); lbox.classList.remove('is-open'); return; }
 		var wbox = e.target.closest && e.target.closest('[data-ppws]');
@@ -850,6 +941,12 @@
 			return;
 		}
 		if (e.target.matches('[data-picker-input]')) { var pb = e.target.closest('[data-picker]'); pickerPaint(pb, e.target.value); pickerOpen(pb, true); return; }
+		if (e.target.matches('[data-lpick-input]')) {
+			var lpb = e.target.closest('[data-lpick-box]'), lpq = e.target.value;
+			clearTimeout(wsSearchTimer); wsSearchTimer = setTimeout(function () { lpickSearch(lpb, lpq); }, 250);
+			return;
+		}
+		if (e.target.matches('[data-home-title]')) { S.home.heroTitle = e.target.value; S.home.dirty = true; S.home.saved = false; var hs = root.querySelector('.st-home__status'); if (hs) { hs.textContent = 'Not saved yet'; } var hb = root.querySelector('[data-home-save]'); if (hb) { hb.disabled = false; } var ht = root.querySelector('.st-preview--home .st-preview__title'); if (ht) { ht.textContent = S.home.heroTitle || S.home.hero.title; } }
 		if (e.target.matches('[data-fsearch]')) {
 			S.search = e.target.value;
 			clearTimeout(searchTimer); searchTimer = setTimeout(function () { render(); var si = root.querySelector('[data-fsearch]'); if (si) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); } }, 200);
@@ -927,6 +1024,23 @@
 		if ((el = e.target.closest('[data-next]'))) { L.step = Math.min(4, L.step + 1); window.scrollTo(0, 0); render(); return; }
 		if ((el = e.target.closest('[data-publish]'))) { publishLesson(); return; }
 		if ((el = e.target.closest('[data-reset-lesson]'))) { S.lesson = freshLesson(); render(); return; }
+		// Home page picks
+		var H = S.home;
+		if ((el = e.target.closest('[data-lpick-choose]'))) {
+			var chosen = H.found[Number(el.getAttribute('data-lpick-choose'))];
+			if (!chosen) { return; }
+			if (el.getAttribute('data-target') === 'hero') { H.hero = chosen; H.heroTitle = ''; }
+			else if (H.featured.length < H.max && !H.featured.some(function (c) { return c.id === chosen.id; })) { H.featured.push(chosen); }
+			H.dirty = true; H.saved = false; render(); return;
+		}
+		if ((el = e.target.closest('[data-home-hero-clear]'))) { H.hero = null; H.heroTitle = ''; H.dirty = true; H.saved = false; render(); return; }
+		if ((el = e.target.closest('[data-home-remove]'))) { H.featured.splice(Number(el.getAttribute('data-home-remove')), 1); H.dirty = true; H.saved = false; render(); return; }
+		if ((el = e.target.closest('[data-home-move]'))) {
+			var mi = Number(el.getAttribute('data-home-move')), mj = mi + Number(el.getAttribute('data-dir'));
+			if (mj < 0 || mj >= H.featured.length) { return; }
+			var mv = H.featured[mi]; H.featured[mi] = H.featured[mj]; H.featured[mj] = mv; H.dirty = true; H.saved = false; render(); return;
+		}
+		if ((el = e.target.closest('[data-home-save]'))) { homeSave(); return; }
 		// Content
 		if ((el = e.target.closest('[data-kind]'))) { S.kindFilter = el.getAttribute('data-kind'); S.issueFilter = ''; S.confirmId = null; render(); return; }
 		if ((el = e.target.closest('[data-flevel]'))) { S.levelFilter = el.getAttribute('data-flevel'); S.confirmId = null; render(); return; }

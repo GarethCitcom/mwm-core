@@ -22,6 +22,19 @@ function mwm_levels(): array {
 	];
 }
 
+/**
+ * Home page picks chosen in the Studio: hero lesson (+ optional short title) and the featured grid.
+ * Empty values mean "let the block decide" (its own field, else the newest lessons).
+ */
+function mwm_home_settings(): array {
+	$o = (array) get_option( 'mwm_home', [] );
+	return [
+		'hero_lesson' => (int) ( $o['hero_lesson'] ?? 0 ),
+		'hero_title'  => sanitize_text_field( (string) ( $o['hero_title'] ?? '' ) ),
+		'featured'    => array_values( array_unique( array_filter( array_map( 'intval', (array) ( $o['featured'] ?? [] ) ) ) ) ),
+	];
+}
+
 function mwm_level_name( string $slug ): string {
 	return mwm_levels()[ $slug ]['name'] ?? '';
 }

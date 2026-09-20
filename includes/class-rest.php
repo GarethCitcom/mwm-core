@@ -76,6 +76,8 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/content/(?P<id>\d+)/restore', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_restore' ] ] ) );
 		register_rest_route( $ns, '/studio/content/(?P<id>\d+)/level', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_set_level' ] ] ) );
 		register_rest_route( $ns, '/studio/sync', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_sync' ] ] ) );
+		register_rest_route( $ns, '/studio/home', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_home' ] ] ) );
+		register_rest_route( $ns, '/studio/home', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_home' ] ] ) );
 		register_rest_route( $ns, '/studio/dashboard', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_dashboard' ] ] ) );
 	}
 
@@ -973,6 +975,66 @@ class MWM_REST {
 		}
 		delete_post_meta( $id, 'needs_level_review' ); // Kym has chosen a level in the Studio.
 		return rest_ensure_response( [ 'ok' => true, 'id' => $id, 'level' => $level, 'level_name' => mwm_level_name( $level ) ] );
+	}
+
+	/** Home page picks + the cards behind them, for the Studio's "Home page" screen. */
+	public static function home_payload(): array {
+		$h    = mwm_home_settings();
+		$card = static function ( int $id ): ?array {
+			if ( ! $id || get_post_type( $id ) !== 'mwm_lesson' || get_post_status( $id ) !== 'publish' ) {
+				return null;
+			}
+			$c = mwm_lesson_card( $id );
+			return $c ? self::public_card( $c ) : null;
+		};
+		$featured = [];
+		foreach ( $h['featured'] as $id ) {
+			if ( ( $c = $card( $id ) ) ) {
+				$featured[] = $c;
+			}
+		}
+		// What the home page falls back to when nothing is chosen, so Kym can see what's showing now.
+		$auto_hero = null;
+		foreach ( mwm_query_lessons( [ 'format' => 'lesson', 'per_page' => 12 ] ) as $c ) {
+			if ( $c['thumb'] ) {
+				$auto_hero = self::public_card( $c );
+				break;
+			}
+		}
+		return [
+			'hero'       => $card( $h['hero_lesson'] ),
+			'hero_title' => $h['hero_title'],
+			'featured'   => $featured,
+			'auto_hero'  => $auto_hero,
+			'auto_featured' => array_map( [ __CLASS__, 'public_card' ], mwm_query_lessons( [ 'format' => 'lesson', 'per_page' => 6 ] ) ),
+			'max'        => 6,
+		];
+	}
+
+	public static function studio_home(): WP_REST_Response {
+		return rest_ensure_response( self::home_payload() );
+	}
+
+	public static function studio_save_home( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$p    = (array) $r->get_json_params();
+		$hero = (int) ( $p['hero_lesson'] ?? 0 );
+		if ( $hero && ( get_post_type( $hero ) !== 'mwm_lesson' || get_post_status( $hero ) !== 'publish' ) ) {
+			return new WP_Error( 'bad_lesson', 'That lesson isn’t on the site, so it can’t be the featured one.', [ 'status' => 400 ] );
+		}
+		$featured = [];
+		foreach ( (array) ( $p['featured'] ?? [] ) as $id ) {
+			$id = (int) $id;
+			if ( $id && get_post_type( $id ) === 'mwm_lesson' && get_post_status( $id ) === 'publish' && ! in_array( $id, $featured, true ) ) {
+				$featured[] = $id;
+			}
+		}
+		$title = mb_substr( sanitize_text_field( (string) ( $p['hero_title'] ?? '' ) ), 0, 80 );
+		update_option( 'mwm_home', [
+			'hero_lesson' => $hero,
+			'hero_title'  => $hero ? $title : '',
+			'featured'    => array_slice( $featured, 0, 6 ),
+		], false );
+		return rest_ensure_response( self::home_payload() );
 	}
 
 	public static function studio_sync(): WP_REST_Response {
