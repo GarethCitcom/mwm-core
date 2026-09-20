@@ -816,7 +816,9 @@ class MWM_REST {
 					'url'   => $c['url'],
 					'thumb'      => $c['thumb'],
 					'youtube_id' => $vbad ? '' : $c['youtube_id'],
-					'level_slug' => mwm_get_term_slug( $c['id'], 'mwm_level' ),
+					'level_slug' => $c['level_slug'],
+					'topic_slug' => $c['topic_slug'],
+					'subtopic_slug' => $c['subtopic_slug'],
 					'date'  => get_post_field( 'post_date', $c['id'] ),
 					'added' => 'Lesson · added ' . mwm_relative_label( get_post_field( 'post_date', $c['id'] ) ),
 				];
@@ -841,6 +843,9 @@ class MWM_REST {
 					'flags'     => $d['lesson_id'] || isset( $on_paper[ $p->ID ] ) ? [] : [ 'unlinked' ],
 					'url'       => $d['url'],
 					'lesson_id' => $d['lesson_id'],
+					'level_slug' => $d['level_slug'],
+					'topic_slug' => $d['topic_slug'],
+					'subtopic_slug' => $d['subtopic_slug'],
 					'date'      => $p->post_date,
 					'added'     => 'Worksheet · added ' . mwm_relative_label( $p->post_date ),
 				];
@@ -855,6 +860,8 @@ class MWM_REST {
 					'title' => $d['series'] . ' · ' . $d['title'] . ' · ' . $d['tier_name'],
 					'meta'  => $d['ms'] ? 'Question paper + mark scheme' : 'Question paper · mark scheme still to come',
 					'url'   => mwm_page_url( 'past-papers' ),
+					'level_slug' => in_array( $d['tier'], [ 'higher', 'foundation' ], true ) ? 'gcse-' . $d['tier'] : '',
+					'board' => $d['board'],
 					'date'  => $p->post_date,
 					'added' => 'Past paper · added ' . mwm_relative_label( $p->post_date ),
 					'data'  => $d,
@@ -870,6 +877,8 @@ class MWM_REST {
 					'title' => $d['paper'] . ' · ' . $d['level_name'],
 					'meta'  => $d['full'] . ' · ' . $d['session_label'] . ( $d['verified_label'] ? ' · verified ' . $d['verified_label'] : '' ),
 					'url'   => mwm_page_url( 'calendar' ),
+					'level_slug' => $d['level'],
+					'board' => $d['board'],
 					'date'  => $p->post_date,
 					'added' => 'Exam date · added ' . mwm_relative_label( $p->post_date ),
 					'data'  => $d,
@@ -880,6 +889,7 @@ class MWM_REST {
 			foreach ( get_posts( [ 'post_type' => 'mwm_quiz', 'post_status' => 'publish', 'posts_per_page' => $limit, 'no_found_rows' => true ] ) as $p ) {
 				$s      = MWM_Quiz::summary( $p->ID );
 				$lesson = (int) get_post_meta( $p->ID, 'lesson', true );
+				$lt     = $lesson ? mwm_lesson_topic_terms( $lesson ) : [ 'topic' => null, 'subtopic' => null ];
 				$rows[] = [
 					'id'        => $p->ID,
 					'kind'      => 'Quiz',
@@ -887,6 +897,9 @@ class MWM_REST {
 					'meta'      => $s['count'] . ' questions · on the lesson page',
 					'url'       => get_permalink( $p ),
 					'lesson_id' => $lesson,
+					'level_slug' => $lesson ? mwm_get_term_slug( $lesson, 'mwm_level' ) : '',
+					'topic_slug' => $lt['topic'] ? $lt['topic']->slug : '',
+					'subtopic_slug' => $lt['subtopic'] ? $lt['subtopic']->slug : '',
 					'date'      => $p->post_date,
 					'added'     => 'Quiz · added ' . mwm_relative_label( $p->post_date ),
 				];
@@ -903,6 +916,8 @@ class MWM_REST {
 					'meta'  => implode( ' · ', array_filter( [ $d['level_name'], $boards, $d['total'] . ' topics', $d['complete'] ? 'list complete' : 'more to add', count( $d['plan'] ) ? count( $d['plan'] ) . '-week plan' : '' ] ) ),
 					'flags' => $d['total'] ? [] : [ 'empty' ],
 					'url'   => trailingslashit( mwm_page_url( 'revision' ) ) . $d['level'] . '/' . ( $d['boards'][0] ?? '' ),
+					'level_slug' => $d['level'],
+					'boards' => array_values( (array) $d['boards'] ),
 					'date'  => $p->post_date,
 					'added' => 'Pathway · added ' . mwm_relative_label( $p->post_date ),
 				];

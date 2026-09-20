@@ -128,7 +128,7 @@
 	var S = {
 		view: B.view || 'dash',
 		playlists: B.playlists, sync: B.sync, synced: false, syncing: false, recent: B.recent,
-		content: B.content, kindFilter: 'All', issueFilter: '', confirmId: null, lastDeleted: null, levelBusy: null,
+		content: B.content, kindFilter: 'All', issueFilter: '', levelFilter: '', topicFilter: '', boardFilter: '', search: '', confirmId: null, lastDeleted: null, levelBusy: null,
 		lesson: freshLesson(),
 		pp: freshPaper({}),
 		pw: freshPathway(),
@@ -316,26 +316,64 @@
 		var i = all.filter(function (x) { return x.key === key; })[0];
 		return i ? i.tag : key;
 	}
+	/* Level / topic / board / search filters on the content list. Rows without the field (e.g. a quiz with no lesson) drop out when that filter is set. */
+	function rowMatches(r, skip) {
+		if (skip !== 'level' && S.levelFilter && r.level_slug !== S.levelFilter) { return false; }
+		if (skip !== 'topic' && S.topicFilter && r.topic_slug !== S.topicFilter) { return false; }
+		if (skip !== 'board' && S.boardFilter && (r.boards ? r.boards.indexOf(S.boardFilter) < 0 : r.board !== S.boardFilter)) { return false; }
+		if (skip !== 'search' && S.search) {
+			var q = S.search.toLowerCase();
+			if ((r.title + ' ' + (r.meta || '')).toLowerCase().indexOf(q) < 0) { return false; }
+		}
+		return true;
+	}
+	function filtersOn() { return !!(S.levelFilter || S.topicFilter || S.boardFilter || S.search); }
+	function filterBar(ofKind) {
+		var count = function (skip, test) { return ofKind.filter(function (r) { return rowMatches(r, skip) && test(r); }).length; };
+		var hasTopics = ofKind.some(function (r) { return r.topic_slug; });
+		var hasBoards = ofKind.some(function (r) { return r.board || (r.boards && r.boards.length); });
+		var html = '<div class="st-filters">';
+		html += '<div class="st-filters__group"><span class="st-filters__label">Level</span><div class="st-chips st-chips--flush">' +
+			chip('All', !S.levelFilter, { flevel: '' }, 'st-fchip') +
+			B.levels.map(function (l) { var n = count('level', function (r) { return r.level_slug === l.slug; }); return chip(l.name.replace(/^GCSE /, '') + ' · ' + n, S.levelFilter === l.slug, { flevel: l.slug }, 'st-fchip' + (n ? '' : ' is-empty')); }).join('') + '</div></div>';
+		if (hasTopics) {
+			html += '<div class="st-filters__group"><label class="st-filters__label" for="st-ftopic">Topic</label><select id="st-ftopic" class="st-select" data-ftopic><option value="">All topics</option>' +
+				B.topics.map(function (t) { var n = count('topic', function (r) { return r.topic_slug === t.slug; }); return '<option value="' + esc(t.slug) + '"' + (S.topicFilter === t.slug ? ' selected' : '') + (n ? '' : ' disabled') + '>' + esc(t.name) + ' (' + n + ')</option>'; }).join('') + '</select></div>';
+		}
+		if (hasBoards) {
+			html += '<div class="st-filters__group"><span class="st-filters__label">Board</span><div class="st-chips st-chips--flush">' + chip('All', !S.boardFilter, { fboard: '' }, 'st-fchip') +
+				Object.keys(B.boards).map(function (b) { var n = count('board', function (r) { return r.boards ? r.boards.indexOf(b) > -1 : r.board === b; }); return chip(B.boards[b] + ' · ' + n, S.boardFilter === b, { fboard: b }, 'st-fchip' + (n ? '' : ' is-empty')); }).join('') + '</div></div>';
+		}
+		html += '<div class="st-filters__group st-filters__group--grow"><label class="st-filters__label" for="st-fsearch">Search</label><input type="search" id="st-fsearch" class="st-input st-input--sm" placeholder="Type part of a title or topic…" value="' + esc(S.search) + '" data-fsearch></div>';
+		return html + '</div>';
+	}
+
 	function viewContent() {
 		var kinds = ['All', 'Lessons', 'Worksheets', 'Past papers', 'Pathways', 'Exam dates', 'Quizzes'];
 		var map = { 'Lessons': 'Lesson', 'Worksheets': 'Worksheet', 'Past papers': 'Past paper', 'Pathways': 'Pathway', 'Exam dates': 'Exam date', 'Quizzes': 'Quiz' };
 		var ofKind = S.content.filter(function (it) { return S.kindFilter === 'All' || map[S.kindFilter] === it.kind; });
+		// A topic or board filter left over from another kind would silently empty the list, so drop it when the control isn't shown.
+		if (S.topicFilter && !ofKind.some(function (r) { return r.topic_slug; })) { S.topicFilter = ''; }
+		if (S.boardFilter && !ofKind.some(function (r) { return r.board || (r.boards && r.boards.length); })) { S.boardFilter = ''; }
+		var base = ofKind.filter(function (r) { return rowMatches(r); });
 		var issues = ISSUES[S.kindFilter] || [];
-		var rows = S.issueFilter ? ofKind.filter(function (it) { return (it.flags || []).indexOf(S.issueFilter) > -1; }) : ofKind;
+		var rows = S.issueFilter ? base.filter(function (it) { return (it.flags || []).indexOf(S.issueFilter) > -1; }) : base;
 		var issuesHtml = '';
 		if (issues.length) {
-			var fine = ofKind.filter(function (it) { return !(it.flags || []).length; }).length;
+			var fine = base.filter(function (it) { return !(it.flags || []).length; }).length;
 			issuesHtml = '<div class="st-issues"><span class="st-issues__label">Needs attention</span><div class="st-chips st-chips--flush">' +
 				issues.map(function (i) {
-					var n = ofKind.filter(function (it) { return (it.flags || []).indexOf(i.key) > -1; }).length;
+					var n = base.filter(function (it) { return (it.flags || []).indexOf(i.key) > -1; }).length;
 					return chip(i.label + ' · ' + n, S.issueFilter === i.key, { issue: i.key }, n ? '' : 'is-empty');
 				}).join('') + '</div>' +
-				'<div class="st-issues__meta">' + (S.issueFilter ? 'Showing ' + rows.length + ' of ' + ofKind.length + ' · <button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-issue="">Show all</button>' : fine + ' of ' + ofKind.length + ' have nothing outstanding') + '</div></div>';
+				'<div class="st-issues__meta">' + (S.issueFilter ? 'Showing ' + rows.length + ' of ' + base.length + ' · <button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-issue="">Show all</button>' : fine + ' of ' + base.length + ' have nothing outstanding') + '</div></div>';
 		}
+		var showing = filtersOn() ? '<div class="st-filters__meta">Showing ' + rows.length + ' of ' + ofKind.length + (S.kindFilter === 'All' ? ' items' : ' ' + S.kindFilter.toLowerCase()) + ' · <button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-fclear>Clear filters</button></div>' : '';
 		return '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>' +
 			'<h1 class="st-h1 st-h1--after-back">Your content</h1>' +
 			'<p class="st-intro">Everything that’s on the site. Edit anything, or remove it — there’s an undo if you change your mind.</p>' +
 			'<div class="st-chips" style="margin-top:24px">' + kinds.map(function (k) { return chip(k, S.kindFilter === k, { kind: k }); }).join('') + '</div>' +
+			filterBar(ofKind) + showing +
 			issuesHtml +
 			(S.lastDeleted ? '<div class="st-undo"><span>“' + esc(S.lastDeleted.item.title) + '” has been removed from the site.</span><button type="button" data-undo>Undo</button></div>' : '') +
 			'<div class="st-list st-list--20">' + (rows.length ? rows.map(function (r) {
@@ -344,10 +382,11 @@
 					: '<button type="button" class="st-smallbtn" data-edit="' + r.id + '">Edit</button><button type="button" class="st-smallbtn st-smallbtn--quiet" data-ask-remove="' + r.id + '">Remove</button>';
 				var flags = (r.flags || []).map(function (f) { return tag(issueTag(f), 'mwm-tag--warn mwm-tag--sm' + (S.issueFilter === f ? ' is-on' : '')); }).join('');
 				var quick = r.kind === 'Lesson' ? '<div class="st-qlevels' + (S.levelBusy === r.id ? ' is-busy' : '') + '" role="group" aria-label="Level"><span class="st-qlevels__label">Level</span>' + B.levels.map(function (l) {
-					return '<button type="button" class="st-qlevel' + (r.level_slug === l.slug ? ' is-on' : '') + '" aria-pressed="' + (r.level_slug === l.slug ? 'true' : 'false') + '" data-qlevel="' + esc(l.slug) + '" data-id="' + r.id + '"' + (S.levelBusy === r.id ? ' disabled' : '') + '>' + esc(l.name.replace(/^GCSE /, '')) + '</button>';
-				}).join('') + (!r.level_slug ? '<span class="st-qlevels__hint">not set yet</span>' : '') + '</div>' : '';
+					var on = r.level_slug === l.slug, check = on && (r.flags || []).indexOf('level') > -1;
+					return '<button type="button" class="st-qlevel' + (on ? ' is-on' : '') + (check ? ' is-check' : '') + '" aria-pressed="' + (on ? 'true' : 'false') + '" data-qlevel="' + esc(l.slug) + '" data-id="' + r.id + '"' + (S.levelBusy === r.id ? ' disabled' : '') + (check ? ' title="Click to confirm this level"' : '') + '>' + esc(l.name.replace(/^GCSE /, '')) + (check ? ' ✓' : '') + '</button>';
+				}).join('') + (!r.level_slug ? '<span class="st-qlevels__hint">not set yet</span>' : ((r.flags || []).indexOf('level') > -1 ? '<span class="st-qlevels__hint">click to confirm, or pick another</span>' : '')) + '</div>' : '';
 				return '<div class="st-list__row st-list__row--16">' + listMedia(r) + '<div class="st-list__main"><div class="st-list__name">' + esc(r.title) + '</div><div class="st-list__sub">' + esc(r.meta) + '</div>' + (flags ? '<div class="st-list__flags">' + flags + '</div>' : '') + quick + '</div>' + tag(r.kind, 'mwm-tag--outline mwm-tag--sm') + actions + '</div>';
-			}).join('') : '<div class="st-list__row"><span class="mwm-meta">' + (S.issueFilter ? 'Nothing needs attention here — nice.' : 'Nothing here yet.') + '</span></div>') + '</div>' +
+			}).join('') : '<div class="st-list__row"><span class="mwm-meta">' + (S.issueFilter ? 'Nothing needs attention here — nice.' : (filtersOn() ? 'Nothing matches those filters — try clearing one.' : 'Nothing here yet.')) + '</span></div>') + '</div>' +
 			'<p class="st-note st-note--16">Removing a lesson never deletes your video — it stays safe on YouTube.</p>';
 	}
 
@@ -788,7 +827,7 @@
 		}
 	});
 	/* Worksheet search for past papers: queries the public worksheets endpoint as you type. */
-	var wsSearchTimer = 0, wsSearchSeq = 0;
+	var wsSearchTimer = 0, wsSearchSeq = 0, searchTimer = 0;
 	function wsSearch(box, q) {
 		var list = box.querySelector('[data-ppws-list]');
 		var mine = ++wsSearchSeq;
@@ -811,6 +850,10 @@
 			return;
 		}
 		if (e.target.matches('[data-picker-input]')) { var pb = e.target.closest('[data-picker]'); pickerPaint(pb, e.target.value); pickerOpen(pb, true); return; }
+		if (e.target.matches('[data-fsearch]')) {
+			S.search = e.target.value;
+			clearTimeout(searchTimer); searchTimer = setTimeout(function () { render(); var si = root.querySelector('[data-fsearch]'); if (si) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); } }, 200);
+		}
 		if (e.target.matches('[data-yt]')) { S.lesson.yt = e.target.value; }
 		if (e.target.matches('[data-lesson-title]')) { S.lesson.title = e.target.value; }
 		if (e.target.matches('[data-quiz-text]')) { S.lesson.quizText = e.target.value; S.lesson.quizResult = null; }
@@ -829,6 +872,7 @@
 	});
 	root.addEventListener('change', function (e) {
 		var el = e.target, L = S.lesson;
+		if (el.matches('[data-ftopic]')) { S.topicFilter = el.value; S.confirmId = null; render(); return; }
 		if (el.matches('[data-pdf]')) {
 			var key = el.getAttribute('data-pdf'), file = el.files && el.files[0];
 			if (!file) { return; }
@@ -885,15 +929,21 @@
 		if ((el = e.target.closest('[data-reset-lesson]'))) { S.lesson = freshLesson(); render(); return; }
 		// Content
 		if ((el = e.target.closest('[data-kind]'))) { S.kindFilter = el.getAttribute('data-kind'); S.issueFilter = ''; S.confirmId = null; render(); return; }
+		if ((el = e.target.closest('[data-flevel]'))) { S.levelFilter = el.getAttribute('data-flevel'); S.confirmId = null; render(); return; }
+		if ((el = e.target.closest('[data-fboard]'))) { S.boardFilter = el.getAttribute('data-fboard'); S.confirmId = null; render(); return; }
+		if ((el = e.target.closest('[data-fclear]'))) { S.levelFilter = ''; S.topicFilter = ''; S.boardFilter = ''; S.search = ''; S.confirmId = null; render(); return; }
 		if ((el = e.target.closest('[data-issue]'))) { var iss = el.getAttribute('data-issue'); S.issueFilter = S.issueFilter === iss ? '' : iss; S.confirmId = null; render(); return; }
 		if ((el = e.target.closest('[data-qlevel]'))) {
 			var qid = Number(el.getAttribute('data-id')), qlevel = el.getAttribute('data-qlevel');
 			var qrow = S.content.filter(function (x) { return x.id === qid; })[0];
-			if (!qrow || qrow.level_slug === qlevel || S.levelBusy) { return; }
+			var needsCheck = (qrow && qrow.flags || []).indexOf('level') > -1;
+			// Clicking the level it's already on does nothing — unless the level is flagged for checking, in which case it confirms it.
+			if (!qrow || S.levelBusy || (qrow.level_slug === qlevel && !needsCheck)) { return; }
+			var confirming = qrow.level_slug === qlevel;
 			S.levelBusy = qid; render();
 			api('studio/content/' + qid + '/level', { method: 'POST', body: { level: qlevel } }).then(function (d) {
 				qrow.level_slug = d.level; qrow.flags = (qrow.flags || []).filter(function (f) { return f !== 'level'; }); S.levelBusy = null;
-				toast('Level changed to ' + d.level_name); render(); refreshContent();
+				toast(confirming ? d.level_name + ' confirmed' : 'Level changed to ' + d.level_name); render(); refreshContent();
 			}).catch(function (err) { S.levelBusy = null; toast(err.message); render(); });
 			return;
 		}
