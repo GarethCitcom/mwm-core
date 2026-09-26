@@ -82,9 +82,9 @@ class MWM_Quiz {
 			}
 			$item = [
 				'type'    => $type,
-				'q'       => sanitize_text_field( $q['q'] ),
-				'options' => array_map( static fn( $o ) => sanitize_text_field( (string) $o ), $options ),
-				'explain' => sanitize_text_field( (string) ( $q['explain'] ?? '' ) ),
+				'q'       => self::clean_text( $q['q'] ),
+				'options' => array_map( static fn( $o ) => self::clean_text( (string) $o ), $options ),
+				'explain' => self::clean_text( (string) ( $q['explain'] ?? '' ) ),
 			];
 			if ( $type === 'order' ) {
 				$co = $q['correctOrder'] ?? null;
@@ -110,9 +110,9 @@ class MWM_Quiz {
 				$item['correct'] = $correct;
 			}
 			if ( $type === 'choice-image' ) {
-				$item['image'] = isset( $q['image'] ) && is_string( $q['image'] ) ? sanitize_text_field( $q['image'] ) : '';
+				$item['image'] = isset( $q['image'] ) && is_string( $q['image'] ) ? self::clean_text( $q['image'] ) : '';
 				$item['imageUrl'] = isset( $q['imageUrl'] ) && is_string( $q['imageUrl'] ) ? esc_url_raw( $q['imageUrl'] ) : '';
-				$item['imageAlt'] = isset( $q['imageAlt'] ) && is_string( $q['imageAlt'] ) ? sanitize_text_field( $q['imageAlt'] ) : '';
+				$item['imageAlt'] = isset( $q['imageAlt'] ) && is_string( $q['imageAlt'] ) ? self::clean_text( $q['imageAlt'] ) : '';
 			}
 			if ( isset( $q['optionImages'] ) && is_array( $q['optionImages'] ) ) {
 				$item['optionImages'] = array_map( static fn( $u ) => esc_url_raw( (string) $u ), array_values( $q['optionImages'] ) );
@@ -120,6 +120,30 @@ class MWM_Quiz {
 			$clean[] = $item;
 		}
 		return [ 'questions' => $clean ];
+	}
+
+	/**
+	 * Tidy a piece of question text without touching maths symbols.
+	 *
+	 * sanitize_text_field() turns a bare "<" into "&lt;" (and treats "x<y" as an
+	 * HTML tag), which broke inequalities such as "40 ≤ w < 60". Question text is
+	 * only ever output through escaping code (the JSON island uses JSON_HEX_TAG and
+	 * the quiz / Studio scripts escape before inserting HTML), so the raw symbols
+	 * are safe to keep. Entities are decoded so quizzes saved before this fix, with
+	 * "&lt;" baked into the stored JSON, read correctly again.
+	 */
+	public static function clean_text( string $text ): string {
+		$text = (string) wp_check_invalid_utf8( $text );
+		for ( $i = 0; $i < 3; $i++ ) {
+			$decoded = html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+			if ( $decoded === $text ) {
+				break;
+			}
+			$text = $decoded;
+		}
+		$text = (string) preg_replace( '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $text );
+		$text = (string) preg_replace( '/\s+/u', ' ', $text );
+		return trim( $text );
 	}
 
 	public static function questions( int $quiz_id ): array {
