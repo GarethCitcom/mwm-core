@@ -11,6 +11,9 @@ $name   = explode( ' ', trim( $name ) )[0];
 $theme  = get_theme_file_uri( 'assets/img' );
 // Past papers and exam dates are reached from the dashboard cards, not the nav.
 $views  = [ 'dash' => 'Dashboard', 'lesson' => 'Add a lesson', 'worksheets' => 'Add a worksheet', 'content' => 'Your content' ];
+if ( MWM_Stats::available() ) {
+	$views['stats'] = 'Site stats';
+}
 $active = sanitize_key( (string) get_query_var( 'mwm_studio_view' ) ) ?: 'dash';
 ?>
 <!DOCTYPE html>
