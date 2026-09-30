@@ -37,7 +37,15 @@ Activation creates the pages the theme navigates to and stores their IDs in the 
 
 ## REST API (`/wp-json/mwm/v1/`)
 
-Public: `lessons`, `topics`, `pathway`, `exam-dates`, `quiz/{id}`. Signed-in: `me/progress` (GET/POST). Studio (capability `mwm_manage_studio`, granted to administrators and editors): `studio/video`, `studio/lessons`, `studio/lessons/{id}`, `studio/upload`, `studio/quiz/validate`, `studio/past-papers`, `studio/exam-dates`, `studio/content`, `studio/content/{id}` (DELETE = bin), `studio/content/{id}/restore`, `studio/sync`, `studio/dashboard`.
+Public: `lessons`, `topics`, `pathway`, `exam-dates`, `quiz/{id}`. Signed-in: `me/progress` (GET/POST). Studio (capability `mwm_manage_studio`, granted to administrators and editors): `studio/video`, `studio/lessons`, `studio/lessons/{id}`, `studio/upload`, `studio/quiz/validate`, `studio/past-papers`, `studio/exam-dates`, `studio/content`, `studio/content/{id}` (DELETE = bin), `studio/content/{id}/restore`, `studio/sync`, `studio/dashboard`, `studio/stats`.
+
+## Site stats (Studio → Site stats)
+
+Visitors, page views, time on site, top pages, where visitors come from, devices and Google search terms, over the last 7, 28 or 90 days. The numbers come from **Google Site Kit**; the Studio has no Google credentials of its own.
+
+Setup: connect Site Kit (Analytics and Search Console) as an administrator, then in **Site Kit → Dashboard → Share** give the **Editor** role view access to both. `MWM_Stats` calls Site Kit's own data endpoints internally as the signed-in user, and Site Kit answers view-only users with the owner's connection. Reports are cached for an hour per range (the Refresh link skips the cache). The menu item only appears while Site Kit is active; if a service isn't connected or shared, that section says so in plain English and the rest still loads. Visits to `/studio/` and wp-admin are left out of the top pages.
+
+Everything Site Kit-specific is in `includes/class-stats.php`. Shared requests only accept Site Kit's allowlisted metrics and dimensions (`googlesitekit_shareable_analytics_4_metrics` / `_dimensions` filters), so check those before adding new ones.
 
 ## Settings → Maths with Melissa
 

@@ -4,7 +4,7 @@
  *
  * Public:  GET lessons, topics, pathway, exam-dates, quiz/{id}
  * Signed-in: GET|POST me/progress
- * Studio (capability mwm_manage_studio): video lookup, lessons, uploads, quiz validation, past papers, exam dates, content list, trash/restore, sync
+ * Studio (capability mwm_manage_studio): video lookup, lessons, uploads, quiz validation, past papers, exam dates, content list, trash/restore, sync, site stats (via Site Kit)
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -79,6 +79,7 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/home', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_home' ] ] ) );
 		register_rest_route( $ns, '/studio/home', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_home' ] ] ) );
 		register_rest_route( $ns, '/studio/dashboard', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_dashboard' ] ] ) );
+		register_rest_route( $ns, '/studio/stats', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ 'MWM_Stats', 'rest' ] ] ) );
 	}
 
 	/* ---------------------------------------------------------------

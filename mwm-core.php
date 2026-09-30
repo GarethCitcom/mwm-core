@@ -28,6 +28,7 @@ require_once MWM_CORE_DIR . 'includes/class-youtube.php';
 require_once MWM_CORE_DIR . 'includes/class-rewrites.php';
 require_once MWM_CORE_DIR . 'includes/class-redirects.php';
 require_once MWM_CORE_DIR . 'includes/class-rest.php';
+require_once MWM_CORE_DIR . 'includes/class-stats.php';
 require_once MWM_CORE_DIR . 'includes/class-studio.php';
 require_once MWM_CORE_DIR . 'includes/class-activator.php';
 

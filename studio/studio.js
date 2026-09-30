@@ -107,6 +107,7 @@
 		if (name === 'route') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><circle cx="3.5" cy="3.5" r="1.5"></circle><circle cx="12.5" cy="12.5" r="1.5"></circle><path d="M5 3.5h4a2.5 2.5 0 0 1 0 5H7a2.5 2.5 0 0 0 0 5h4"></path></svg>'; }
 		if (name === 'calendar') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><rect x="2" y="3" width="12" height="11" rx="2"></rect><line x1="2" y1="6.5" x2="14" y2="6.5"></line><line x1="5.5" y1="1.5" x2="5.5" y2="4"></line><line x1="10.5" y1="1.5" x2="10.5" y2="4"></line></svg>'; }
 		if (name === 'star') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z"></path></svg>'; }
+		if (name === 'chart') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><path d="M2 13.5h12"></path><path d="M4 11V8M7.3 11V4.5M10.6 11V6.5M13.9 11V3"></path></svg>'; }
 		if (name === 'up') { return '<svg width="14" height="14" viewBox="0 0 16 16" ' + p + '><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5"></path></svg>'; }
 		if (name === 'down') { return '<svg width="14" height="14" viewBox="0 0 16 16" ' + p + '><path d="M8 3v10M3.5 8.5L8 13l4.5-4.5"></path></svg>'; }
 		if (name === 'paper') { return '<svg width="18" height="18" viewBox="0 0 16 16" ' + p + '><path d="M4 2h5.5L13 5.5V14H4z"></path><path d="M9.5 2v3.5H13"></path><path d="M6 8.5h4M6 11h4"></path></svg>'; }
@@ -141,7 +142,8 @@
 		ws: freshWorksheet(),
 		ed: { paper: 'Paper 1 (non-calculator)', date: '', session: 'morning', level: 'gcse-higher', board: 'edexcel', checked: false, saving: false, error: '', dateConfirm: null },
 		dates: B.dates,
-		home: homeState(B.home)
+		home: homeState(B.home),
+		stats: { days: 28, data: {}, loading: false, error: '' }
 	};
 	function homeState(h) {
 		h = h || {};
@@ -165,6 +167,7 @@
 					'<button type="button" class="mwm-btn ' + (c.primary ? 'mwm-btn--primary' : 'mwm-btn--secondary') + '" data-go="' + c.view + '">Start</button></div>';
 			}).join('') + '</div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('play') + '</span><div class="st-card__text"><h2>Suggested from YouTube</h2><p>' + esc((S.suggestions.items || []).length ? (S.suggestions.items.length === 1 ? '1 video on your channel isn’t on the site yet.' : S.suggestions.items.length + ' videos on your channel aren’t on the site yet.') : 'We check your channel overnight for videos that aren’t on the site.') + '</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="suggestions">See suggestions<span aria-hidden="true">→</span></button></div>' +
+			(B.stats ? '<div class="st-card st-card--small"><span class="st-card__icon">' + icon('chart') + '</span><div class="st-card__text"><h2>Site stats</h2><p>How many people visited, what they looked at and what they searched on Google.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="stats">See your stats<span aria-hidden="true">→</span></button></div>' : '') +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('star') + '</span><div class="st-card__text"><h2>Home page</h2><p>Choose the big lesson at the top of the home page (with a shorter title if you like) and the six lessons underneath.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="home">Choose lessons<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('route') + '</span><div class="st-card__text"><h2>Revision pathways</h2><p>The order students revise topics in, per level — with links to your lessons and an optional week-by-week plan.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="pathways">Edit pathways<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('calendar') + '</span><div class="st-card__text"><h2>Update exam dates</h2><p>Once a year, when the boards confirm them — verified dates appear on the exam calendar.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="dates">Update dates<span aria-hidden="true">→</span></button></div>' +
@@ -673,6 +676,169 @@
 			}).join('') : '<div class="st-list__row"><span class="mwm-meta">No dates on the site yet.</span></div>') + '</div>';
 	}
 
+	/* ---------------------------------------------------------------- site stats (Google, via Site Kit) */
+	function fmtNum(n) { return Math.round(n || 0).toLocaleString('en-GB'); }
+	function fmtDuration(s) {
+		s = Math.round(s || 0);
+		if (s < 60) { return s + 's'; }
+		return Math.floor(s / 60) + 'm ' + (s % 60 < 10 ? '0' : '') + (s % 60) + 's';
+	}
+	function fmtDay(ymd, opts) { var p = ymd.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-GB', opts || { weekday: 'short', day: 'numeric', month: 'short' }); }
+	function statsAgo(ts) {
+		var mins = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
+		return mins < 1 ? 'just now' : (mins === 1 ? '1 minute ago' : (mins < 60 ? mins + ' minutes ago' : 'about an hour ago'));
+	}
+	/* "↑ 12% on the 28 days before": the arrow and words carry the direction, so no red/green. */
+	function statsDelta(t, days) {
+		if (!t) { return ''; }
+		var than = ' on the ' + days + ' days before';
+		if (!t.prev) { return t.now ? 'New' + than.replace(' on', ' compared with') : ''; }
+		var pct = Math.round((t.now - t.prev) / t.prev * 100);
+		if (pct === 0) { return 'About the same as the ' + days + ' days before'; }
+		return (pct > 0 ? '↑ ' : '↓ ') + Math.abs(pct) + '% ' + (pct > 0 ? 'up' : 'down') + than;
+	}
+	function statsTile(label, value, delta, note) {
+		return '<div class="st-tile"><div class="st-tile__label">' + esc(label) + '</div><div class="st-tile__value">' + esc(value) + '</div>' +
+			'<div class="st-tile__delta">' + esc(delta || note || '') + '</div></div>';
+	}
+	function niceMax(v) {
+		if (v <= 4) { return 4; }
+		var step = Math.pow(10, Math.floor(Math.log10(v))), n = v / step;
+		return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * step;
+	}
+	/* Single-series area chart of daily visitors. The SVG stretches to the width; labels, crosshair and dot are HTML so they stay crisp. */
+	function statsChart(series) {
+		if (!series || series.length < 2) { return '<p class="st-note st-note--16">Not enough days yet to draw a chart.</p>'; }
+		var n = series.length, max = niceMax(Math.max.apply(null, series.map(function (p) { return p.users; })));
+		var pts = series.map(function (p, i) { return (i / (n - 1) * 1000).toFixed(1) + ',' + (200 - p.users / max * 200).toFixed(1); });
+		var ticks = [max, max / 2, 0];
+		var xs = [0, Math.floor((n - 1) / 2), n - 1];
+		return '<div class="st-chart" data-st-chart>' +
+			'<div class="st-chart__y" aria-hidden="true">' + ticks.map(function (t) { return '<span>' + fmtNum(t) + '</span>'; }).join('') + '</div>' +
+			'<div class="st-chart__plot">' +
+			'<svg viewBox="0 0 1000 200" preserveAspectRatio="none" role="img" aria-label="Visitors per day, ' + esc(fmtDay(series[0].date)) + ' to ' + esc(fmtDay(series[n - 1].date)) + '">' +
+			ticks.map(function (t) { var y = (200 - t / max * 200).toFixed(1); return '<line x1="0" x2="1000" y1="' + y + '" y2="' + y + '" class="st-chart__grid' + (t === 0 ? ' is-base' : '') + '" vector-effect="non-scaling-stroke"/>'; }).join('') +
+			'<path class="st-chart__area" d="M0,200 L' + pts.join(' L') + ' L1000,200 Z"/>' +
+			'<polyline class="st-chart__line" points="' + pts.join(' ') + '" vector-effect="non-scaling-stroke"/></svg>' +
+			'<span class="st-chart__cross" hidden></span><span class="st-chart__dot" hidden></span><div class="st-chart__tip" role="status" hidden></div>' +
+			'</div>' +
+			'<div class="st-chart__x" aria-hidden="true">' + xs.map(function (i) { return '<span>' + esc(fmtDay(series[i].date, { day: 'numeric', month: 'short' })) + '</span>'; }).join('') + '</div>' +
+			'</div>' +
+			'<details class="st-details"><summary>Show every day as a table</summary><table class="st-table"><thead><tr><th scope="col">Day</th><th scope="col">Visitors</th><th scope="col">Page views</th></tr></thead><tbody>' +
+			series.slice().reverse().map(function (p) { return '<tr><td>' + esc(fmtDay(p.date)) + '</td><td>' + fmtNum(p.users) + '</td><td>' + fmtNum(p.views) + '</td></tr>'; }).join('') +
+			'</tbody></table></details>';
+	}
+	function statsChartHover(box, clientX) {
+		var D = S.stats.data[S.stats.days], series = D && D.analytics && D.analytics.series;
+		if (!series || series.length < 2) { return; }
+		var plot = box.querySelector('.st-chart__plot'), r = plot.getBoundingClientRect(), n = series.length;
+		var i = Math.max(0, Math.min(n - 1, Math.round((clientX - r.left) / r.width * (n - 1))));
+		var p = series[i], max = niceMax(Math.max.apply(null, series.map(function (s) { return s.users; })));
+		var left = i / (n - 1) * 100, top = (1 - p.users / max) * 100;
+		var cross = plot.querySelector('.st-chart__cross'), dot = plot.querySelector('.st-chart__dot'), tip = plot.querySelector('.st-chart__tip');
+		cross.hidden = dot.hidden = tip.hidden = false;
+		cross.style.left = dot.style.left = left + '%';
+		dot.style.top = top + '%';
+		tip.innerHTML = '<strong>' + esc(fmtDay(p.date)) + '</strong><span>' + fmtNum(p.users) + (p.users === 1 ? ' visitor' : ' visitors') + '</span><span>' + fmtNum(p.views) + (p.views === 1 ? ' page view' : ' page views') + '</span>';
+		// Keep the tooltip inside the chart: flip it to the left of the line past the halfway point.
+		tip.classList.toggle('is-left', left > 55);
+		tip.style.left = left + '%';
+	}
+	function statsChartLeave(box) {
+		box.querySelectorAll('.st-chart__cross, .st-chart__dot, .st-chart__tip').forEach(function (el) { el.hidden = true; });
+	}
+	function statsBars(items, unit) {
+		var top = Math.max.apply(null, items.map(function (x) { return x.share; })) || 1;
+		return '<div class="st-bars">' + items.map(function (x) {
+			return '<div class="st-bars__row"><div class="st-bars__head"><span>' + esc(x.label) + '</span><span class="st-bars__val">' + Math.round(x.share) + '%</span></div>' +
+				'<span class="st-bar" title="' + esc(fmtNum(x.value) + ' ' + unit) + '"><span style="width:' + (x.share / top * 100).toFixed(1) + '%"></span></span></div>';
+		}).join('') + '</div>';
+	}
+	function statsLoad(days, refresh) {
+		var T = S.stats;
+		T.loading = true; T.error = '';
+		api('studio/stats?days=' + days + (refresh ? '&refresh=1' : '')).then(function (d) {
+			T.data[days] = d; T.loading = false;
+			if (S.view === 'stats') { render(); }
+			if (refresh) { toast('Stats updated'); }
+		}).catch(function (err) {
+			T.loading = false; T.error = err.message;
+			if (S.view === 'stats') { render(); }
+		});
+	}
+	function viewStats() {
+		var T = S.stats, D = T.data[T.days];
+		if (!D && !T.loading && !T.error) { statsLoad(T.days); }
+		var html = '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>' +
+			'<h1 class="st-h1 st-h1--after-back">Site stats</h1>' +
+			'<p class="st-intro">How many people visit the site, what they look at and how they find it. The numbers come from Google and are a day behind.</p>' +
+			'<div class="st-chips st-stats__range" role="group" aria-label="Time period">' + [7, 28, 90].map(function (d) { return chip('Last ' + d + ' days', T.days === d, { statsdays: d }); }).join('') +
+			(D && D.label ? '<span class="mwm-meta st-stats__label">' + esc(D.label) + '</span>' : '') + '</div>';
+
+		if (!D) {
+			if (T.error) {
+				return html + '<div class="st-panel st-panel--24"><h2>We couldn’t get your stats</h2><p class="st-panel__sub">' + esc(T.error) + '</p><button type="button" class="mwm-btn mwm-btn--secondary mwm-btn--sm" style="margin-top:16px" data-stats-retry>Try again</button></div>';
+			}
+			return html + '<div class="st-panel st-panel--24 st-stats__loading"><p class="st-panel__sub" style="margin:0">Fetching your numbers from Google…</p></div>';
+		}
+		if (D.status !== 'ok') {
+			return html + '<div class="st-panel st-panel--24"><h2>No stats to show yet</h2><p class="st-panel__sub">' + esc(D.message) + '</p></div>';
+		}
+
+		var A = D.analytics || {}, G = D.search || {}, t = A.totals || {}, g = G.totals || {};
+		if (A.error) {
+			html += '<div class="st-banner">' + esc(A.error) + (A.detail ? '<br><small>' + esc(A.detail) + '</small>' : '') + '</div>';
+		} else {
+			html += '<div class="st-tiles">' +
+				statsTile('Visitors', fmtNum(t.users.now), statsDelta(t.users, D.days)) +
+				statsTile('Page views', fmtNum(t.views.now), statsDelta(t.views, D.days)) +
+				statsTile('Average visit', fmtDuration(t.duration.now), statsDelta(t.duration, D.days)) +
+				(G.error ? statsTile('Visits', fmtNum(t.sessions.now), statsDelta(t.sessions, D.days)) : statsTile('Clicks from Google', fmtNum(g.clicks.now), statsDelta(g.clicks, D.days))) +
+				'</div>';
+			html += '<div class="st-panel st-panel--24"><h2>Visitors each day</h2><p class="st-panel__sub">Hover over the chart to see a day’s numbers.</p>' + statsChart(A.series) + '</div>';
+
+			html += '<h2 class="st-h2 st-h2--32">Most viewed</h2>';
+			if (A.pages && A.pages.length) {
+				var topViews = A.pages[0].views || 1;
+				html += '<div class="st-list st-list--12">' + A.pages.map(function (p, i) {
+					return '<div class="st-list__row st-stats__page"><span class="st-stats__rank">' + (i + 1) + '</span>' +
+						'<div class="st-list__main"><a class="st-list__name st-stats__link" href="' + esc(p.url) + '" target="_blank" rel="noopener">' + esc(p.title) + '</a>' + (p.kind ? ' ' + tag(p.kind, 'mwm-tag--outline mwm-tag--sm') : '') +
+						'<span class="st-bar st-bar--thin"><span style="width:' + (p.views / topViews * 100).toFixed(1) + '%"></span></span></div>' +
+						'<span class="st-list__meta">' + fmtNum(p.views) + (p.views === 1 ? ' view' : ' views') + '</span></div>';
+				}).join('') + '</div>';
+			} else {
+				html += '<div class="st-list st-list--12"><div class="st-list__row"><span class="mwm-meta">' + (A.pages ? 'No page views in this period yet.' : 'Couldn’t load the list of pages just now.') + '</span></div></div>';
+			}
+
+			html += '<div class="st-stats__pair">';
+			html += '<div class="st-panel st-panel--24"><h2>How people find the site</h2><p class="st-panel__sub">Share of visits.</p>' +
+				(A.sources && A.sources.length ? statsBars(A.sources, 'visits') : '<p class="st-note st-note--16">' + (A.sources ? 'No visits in this period yet.' : 'Couldn’t load this just now.') + '</p>') + '</div>';
+			html += '<div class="st-panel st-panel--24"><h2>What they use</h2><p class="st-panel__sub">Share of visitors.</p>' +
+				(A.devices && A.devices.length ? statsBars(A.devices, 'visitors') : '<p class="st-note st-note--16">' + (A.devices ? 'No visitors in this period yet.' : 'Couldn’t load this just now.') + '</p>') + '</div>';
+			html += '</div>';
+		}
+
+		html += '<h2 class="st-h2 st-h2--32">What people searched on Google</h2>';
+		if (G.error) {
+			html += '<div class="st-banner">' + esc(G.error) + (G.detail ? '<br><small>' + esc(G.detail) + '</small>' : '') + '</div>';
+		} else {
+			html += '<p class="st-intro" style="margin-top:6px">' + fmtNum(g.impressions.now) + ' times the site showed up in Google results, and ' + fmtNum(g.clicks.now) + (g.clicks.now === 1 ? ' click' : ' clicks') + ' through to it.</p>';
+			if (G.queries && G.queries.length) {
+				html += '<div class="st-list st-list--12">' + G.queries.map(function (q) {
+					return '<div class="st-list__row"><div class="st-list__main"><div class="st-list__name">' + esc(q.query) + '</div>' +
+						'<div class="st-list__sub">Shown ' + fmtNum(q.impressions) + (q.impressions === 1 ? ' time' : ' times') + (q.position ? ' · usually around #' + Math.max(1, Math.round(q.position)) + ' on Google' : '') + '</div></div>' +
+						'<span class="st-list__meta">' + fmtNum(q.clicks) + (q.clicks === 1 ? ' click' : ' clicks') + '</span></div>';
+				}).join('') + '</div>';
+			} else {
+				html += '<div class="st-list st-list--12"><div class="st-list__row"><span class="mwm-meta">' + (G.queries ? 'No searches recorded in this period yet. Google search data can take a few days to arrive.' : 'Couldn’t load search terms just now.') + '</span></div></div>';
+			}
+		}
+
+		html += '<div class="st-stats__foot"><span class="mwm-meta">Updated ' + esc(statsAgo(D.generated)) + ' · </span><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-stats-refresh' + (T.loading ? ' disabled' : '') + '>' + (T.loading ? 'Refreshing…' : 'Refresh') + '</button>' +
+			'<a class="mwm-linkbtn mwm-linkbtn--sm st-stats__full" href="' + esc(D.dashboard) + '" target="_blank" rel="noopener">Open the full Site Kit dashboard<span aria-hidden="true">→</span></a></div>';
+		return html;
+	}
+
 	function render() {
 		var html;
 		switch (S.view) {
@@ -684,6 +850,7 @@
 			case 'home': html = viewHome(); break;
 			case 'pathways': html = viewPathways(); break;
 			case 'suggestions': html = viewSuggestions(); break;
+			case 'stats': html = viewStats(); break;
 			default: html = viewDash();
 		}
 		root.innerHTML = html;
@@ -999,6 +1166,9 @@
 	root.addEventListener('click', function (e) {
 		var el, L = S.lesson, P = S.pp, E = S.ed;
 		if ((el = e.target.closest('[data-go]'))) { e.preventDefault(); if (el.getAttribute('data-go') === 'lesson' && L.published) { S.lesson = freshLesson(); } if (el.getAttribute('data-go') === 'worksheets' && S.ws.published) { S.ws = freshWorksheet(); } go(el.getAttribute('data-go')); return; }
+		if ((el = e.target.closest('[data-statsdays]'))) { S.stats.days = Number(el.getAttribute('data-statsdays')); S.stats.error = ''; render(); return; }
+		if ((el = e.target.closest('[data-stats-retry]'))) { S.stats.error = ''; render(); return; }
+		if ((el = e.target.closest('[data-stats-refresh]'))) { statsLoad(S.stats.days, true); render(); return; }
 		if ((el = e.target.closest('[data-sync]'))) {
 			S.syncing = true; render();
 			api('studio/sync', { method: 'POST' }).then(function (r) { S.syncing = false; S.synced = r.ok; S.playlists = r.playlists; S.sync = r.state; if (!r.ok) { toast(r.error || 'The playlists couldn’t be checked just now.'); } render(); })
@@ -1185,6 +1355,14 @@
 			} else { E.dateConfirm = did; render(); }
 			return;
 		}
+	});
+	root.addEventListener('pointermove', function (e) {
+		var box = e.target.closest('[data-st-chart]');
+		if (box) { statsChartHover(box, e.clientX); }
+	});
+	root.addEventListener('pointerout', function (e) {
+		var box = e.target.closest('[data-st-chart]');
+		if (box && !box.contains(e.relatedTarget)) { statsChartLeave(box); }
 	});
 	document.addEventListener('click', function (e) {
 		var a = e.target.closest('[data-studio-nav] [data-view]');
