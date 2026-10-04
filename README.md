@@ -12,6 +12,7 @@ Requires **Advanced Custom Fields Pro** (field groups are registered in PHP, not
 | `mwm_worksheet`  | `/worksheets/{slug}/`, listed at `/worksheets/` | Worksheet PDF (`pdf`), optional worked answers (`answers`), the lesson it goes with (`lesson`), level and topic. Lessons point back via `worksheet_post`. |
 | `mwm_quiz`       | `/quiz/{slug}/`   | Quiz JSON attached to a lesson (`lesson` field).                            |
 | `mwm_past_paper` | listed on `/revision/past-papers/` | Board, tier, series, paper number, question paper + mark scheme PDFs, matching worksheets. |
+| `mwm_predicted_paper` | listed on `/revision/predicted-papers/` | Melissa's own paper for a coming exam: board, level (GCSE Foundation / Higher / A-level), exam year, paper name, calculator flag, question paper + worked solutions PDFs, matching worksheets. No series or paper number; retired after the exam, never becomes a past paper. |
 | `mwm_exam_date`  | (no page)         | Board, level, paper label, date, session, verified flag. Feeds exam panels and the calendar. |
 | `mwm_pathway`    | (no page)         | Level (+ optional boards), topic groups → rows (lesson, note, coming soon), suggested revision plan. |
 
@@ -33,11 +34,11 @@ Lesson fields: `youtube_url`, `youtube_id`, `duration_seconds`, `thumbnail_url`,
 
 ## Pages
 
-Activation creates the pages the theme navigates to and stores their IDs in the `mwm_pages` option: Home, Learn Maths (`/learn-maths/`), Revision (`/revision/`), Exam calendar, Past papers, Quick Maths, Gaming & Story Maths, My Learning, Privacy. Each page holds one ACF block from the theme. Pretty URLs: `/learn-maths/{level}/{topic}/`, `/revision/{level}/{board}/`, `/studio/{view}/`.
+Activation creates the pages the theme navigates to and stores their IDs in the `mwm_pages` option: Home, Learn Maths (`/learn-maths/`), Revision (`/revision/`), Exam calendar, Past papers, Predicted papers, Quick Maths, Gaming & Story Maths, My Learning, Privacy. Each page holds one ACF block from the theme. Pages added in later plugin versions are created on the first request after the update (`MWM_Activator::maybe_upgrade`, keyed on the plugin version), so no reactivation is needed. Pretty URLs: `/learn-maths/{level}/{topic}/`, `/revision/{level}/{board}/`, `/studio/{view}/`.
 
 ## REST API (`/wp-json/mwm/v1/`)
 
-Public: `lessons`, `topics`, `pathway`, `exam-dates`, `quiz/{id}`. Signed-in: `me/progress` (GET/POST). Studio (capability `mwm_manage_studio`, granted to administrators and editors): `studio/video`, `studio/lessons`, `studio/lessons/{id}`, `studio/upload`, `studio/quiz/validate`, `studio/past-papers`, `studio/exam-dates`, `studio/content`, `studio/content/{id}` (DELETE = bin), `studio/content/{id}/restore`, `studio/sync`, `studio/dashboard`, `studio/stats`.
+Public: `lessons`, `topics`, `pathway`, `exam-dates`, `quiz/{id}`. Signed-in: `me/progress` (GET/POST). Studio (capability `mwm_manage_studio`, granted to administrators and editors): `studio/video`, `studio/lessons`, `studio/lessons/{id}`, `studio/upload`, `studio/quiz/validate`, `studio/past-papers`, `studio/predicted-papers`, `studio/exam-dates`, `studio/content`, `studio/content/{id}` (DELETE = bin), `studio/content/{id}/restore`, `studio/sync`, `studio/dashboard`, `studio/stats`.
 
 ## Site stats (Studio → Site stats)
 

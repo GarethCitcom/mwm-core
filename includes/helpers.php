@@ -1000,6 +1000,48 @@ function mwm_past_paper_data( $post ): ?array {
 }
 
 /**
+ * A predicted paper: Melissa's own paper for a coming exam, with worked solutions rather than a mark scheme.
+ */
+function mwm_predicted_paper_data( $post ): ?array {
+	$post = get_post( $post );
+	if ( ! $post || $post->post_type !== 'mwm_predicted_paper' ) {
+		return null;
+	}
+	$id    = $post->ID;
+	$level = mwm_get_term_slug( $id, 'mwm_level' ) ?: 'gcse-higher';
+	$board = mwm_get_term_slug( $id, 'mwm_board' );
+	$year  = (int) get_post_meta( $id, 'exam_year', true );
+	$name  = trim( (string) get_post_meta( $id, 'paper_name', true ) ) ?: 'Predicted paper';
+	$calc  = (bool) get_post_meta( $id, 'calculator', true );
+	$qp    = mwm_attachment_info( get_post_meta( $id, 'question_paper', true ) );
+	$sol   = mwm_attachment_info( get_post_meta( $id, 'worked_solutions', true ) );
+	$worksheets = [];
+	foreach ( (array) get_post_meta( $id, 'worksheets', true ) as $wid ) {
+		$w = mwm_worksheet_data( (int) $wid, false );
+		if ( $w ) {
+			$worksheets[] = [ 'id' => $w['id'], 'name' => $w['title'], 'url' => $w['url'] ];
+		}
+	}
+	$level_name = mwm_level_name( $level );
+	return [
+		'id'         => $id,
+		'board'      => $board,
+		'board_name' => mwm_board_name( $board ),
+		'level'      => $level,
+		'level_name' => $level_name,
+		'year'       => $year,
+		'group'      => ( $year ? "Predicted $year" : 'Predicted' ) . ' · ' . $level_name,
+		'calculator' => $calc,
+		'title'      => $name,
+		'meta'       => implode( ' · ', array_filter( [ $year ? "Predicted $year" : '', mwm_board_name( $board ), $level_name, $calc ? 'calculator' : 'non-calculator' ] ) ),
+		'qp'         => $qp,
+		'solutions'  => $sol,
+		'worksheets' => $worksheets,
+		'post_title' => mwm_title( $id ),
+	];
+}
+
+/**
  * Sort key for a series label ("June 2025" > "November 2024").
  */
 function mwm_series_sort_key( string $season, int $year ): int {
@@ -1038,6 +1080,7 @@ function mwm_page_url( string $key ): string {
 		'revision'    => '/revision/',
 		'calendar'    => '/revision/exam-calendar/',
 		'past-papers' => '/revision/past-papers/',
+		'predicted-papers' => '/revision/predicted-papers/',
 		'quick-maths' => '/quick-maths/',
 		'gaming'      => '/gaming-story-maths/',
 		'my-learning' => '/my-learning/',

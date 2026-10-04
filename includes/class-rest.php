@@ -4,7 +4,7 @@
  *
  * Public:  GET lessons, topics, pathway, exam-dates, quiz/{id}
  * Signed-in: GET|POST me/progress
- * Studio (capability mwm_manage_studio): video lookup, lessons, uploads, quiz validation, past papers, exam dates, content list, trash/restore, sync, site stats (via Site Kit)
+ * Studio (capability mwm_manage_studio): video lookup, lessons, uploads, quiz validation, past papers, predicted papers, exam dates, content list, trash/restore, sync, site stats (via Site Kit)
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -70,6 +70,7 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/upload', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_upload' ] ] ) );
 		register_rest_route( $ns, '/studio/quiz/validate', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_validate_quiz' ] ] ) );
 		register_rest_route( $ns, '/studio/past-papers', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_past_paper' ] ] ) );
+		register_rest_route( $ns, '/studio/predicted-papers', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_predicted_paper' ] ] ) );
 		register_rest_route( $ns, '/studio/exam-dates', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_exam_date' ] ] ) );
 		register_rest_route( $ns, '/studio/content', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_content' ] ] ) );
 		register_rest_route( $ns, '/studio/content/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'DELETE', 'callback' => [ __CLASS__, 'studio_trash' ] ] ) );
@@ -748,6 +749,83 @@ class MWM_REST {
 		return rest_ensure_response( mwm_past_paper_data( $id ) );
 	}
 
+	/**
+	 * Predicted papers: board, level, exam year, a free-text paper name, question paper + worked solutions PDFs.
+	 * No series or paper number — a predicted paper is retired after the exam, it never becomes a past paper.
+	 */
+	public static function studio_save_predicted_paper( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$p     = (array) $r->get_json_params();
+		$id    = (int) ( $p['id'] ?? 0 );
+		$board = sanitize_key( (string) ( $p['board'] ?? 'edexcel' ) );
+		$level = sanitize_key( (string) ( $p['level'] ?? 'gcse-higher' ) );
+		$year  = (int) ( $p['year'] ?? 0 );
+		$name  = sanitize_text_field( (string) ( $p['name'] ?? '' ) );
+		$calc  = array_key_exists( 'calculator', $p ) ? (bool) $p['calculator'] : true;
+		$qp    = (int) ( $p['question_paper'] ?? 0 );
+		$sol   = (int) ( $p['worked_solutions'] ?? 0 );
+		if ( ! isset( mwm_boards()[ $board ] ) ) {
+			return new WP_Error( 'bad_board', 'Pick an exam board from the list.', [ 'status' => 400 ] );
+		}
+		if ( ! isset( mwm_levels()[ $level ] ) ) {
+			return new WP_Error( 'bad_level', 'Pick a level from the list.', [ 'status' => 400 ] );
+		}
+		if ( $year < 2024 || $year > 2040 ) {
+			return new WP_Error( 'bad_year', 'Pick the year of the exam this paper predicts.', [ 'status' => 400 ] );
+		}
+		if ( $name === '' ) {
+			return new WP_Error( 'missing_name', 'Give the paper a name students will recognise, e.g. “Paper 1 Pure Mathematics”.', [ 'status' => 400 ] );
+		}
+		if ( ! $id && ! $qp ) {
+			return new WP_Error( 'missing_paper', 'Add the question paper PDF first.', [ 'status' => 400 ] );
+		}
+		$title   = "Predicted $year · $name · " . mwm_level_name( $level ) . ' · ' . mwm_board_name( $board );
+		$postarr = [ 'post_type' => 'mwm_predicted_paper', 'post_status' => 'publish', 'post_title' => $title ];
+		if ( $id ) {
+			if ( get_post_type( $id ) !== 'mwm_predicted_paper' ) {
+				return new WP_Error( 'not_found', 'That predicted paper is no longer on the site.', [ 'status' => 404 ] );
+			}
+			$postarr['ID'] = $id;
+			$id = (int) wp_update_post( $postarr, true );
+		} else {
+			$id = (int) wp_insert_post( $postarr, true );
+		}
+		if ( is_wp_error( $id ) || ! $id ) {
+			return new WP_Error( 'save_failed', 'Something went wrong saving the paper. Try again in a moment.', [ 'status' => 500 ] );
+		}
+		wp_set_object_terms( $id, $board, 'mwm_board' );
+		wp_set_object_terms( $id, $level, 'mwm_level' );
+		update_post_meta( $id, 'exam_year', $year );
+		update_post_meta( $id, 'paper_name', $name );
+		update_post_meta( $id, 'calculator', $calc ? 1 : 0 );
+		if ( $qp ) {
+			update_post_meta( $id, 'question_paper', $qp );
+		}
+		if ( array_key_exists( 'worked_solutions', $p ) ) {
+			if ( $sol ) {
+				update_post_meta( $id, 'worked_solutions', $sol );
+			} else {
+				delete_post_meta( $id, 'worked_solutions' );
+			}
+		}
+		// "Practise what comes up": existing worksheet pages by ID, plus any new worksheet PDFs (each becomes its own page).
+		if ( isset( $p['worksheets'] ) && is_array( $p['worksheets'] ) ) {
+			$ws_ids = array_values( array_filter( array_map( 'intval', $p['worksheets'] ), static fn( $w ) => get_post_type( $w ) === 'mwm_worksheet' ) );
+			$label  = mwm_board_name( $board ) . " predicted $year $name";
+			foreach ( (array) ( $p['worksheet_pdfs'] ?? [] ) as $pdf_id ) {
+				$pdf_id = (int) $pdf_id;
+				if ( $pdf_id && get_post_type( $pdf_id ) === 'attachment' ) {
+					$ws_id = mwm_upsert_worksheet( 0, $pdf_id, 0, "$label revision worksheet" );
+					if ( $ws_id ) {
+						wp_set_object_terms( $ws_id, $level, 'mwm_level' );
+						$ws_ids[] = $ws_id;
+					}
+				}
+			}
+			update_post_meta( $id, 'worksheets', array_values( array_unique( $ws_ids ) ) );
+		}
+		return rest_ensure_response( mwm_predicted_paper_data( $id ) );
+	}
+
 	public static function studio_save_exam_date( WP_REST_Request $r ): WP_REST_Response|WP_Error {
 		$p      = (array) $r->get_json_params();
 		$id     = (int) ( $p['id'] ?? 0 );
@@ -828,16 +906,16 @@ class MWM_REST {
 			}
 		}
 		if ( in_array( $kind, [ 'all', 'worksheets' ], true ) ) {
-			// Worksheets attached to a past paper ("practise what came up") count as linked too.
+			// Worksheets attached to a past or predicted paper ("practise what came up") count as linked too.
 			$on_paper = [];
-			foreach ( get_posts( [ 'post_type' => 'mwm_past_paper', 'post_status' => 'publish', 'posts_per_page' => -1, 'fields' => 'ids', 'no_found_rows' => true ] ) as $pp_id ) {
+			foreach ( get_posts( [ 'post_type' => [ 'mwm_past_paper', 'mwm_predicted_paper' ], 'post_status' => 'publish', 'posts_per_page' => -1, 'fields' => 'ids', 'no_found_rows' => true ] ) as $pp_id ) {
 				foreach ( (array) get_post_meta( $pp_id, 'worksheets', true ) as $wid ) {
 					$on_paper[ (int) $wid ] = true;
 				}
 			}
 			foreach ( get_posts( [ 'post_type' => 'mwm_worksheet', 'post_status' => 'publish', 'posts_per_page' => $limit, 'no_found_rows' => true ] ) as $p ) {
 				$d = mwm_worksheet_data( $p, false );
-				$where = $d['lesson_id'] ? 'on the lesson page' : ( isset( $on_paper[ $p->ID ] ) ? 'on a past paper' : 'no lesson linked' );
+				$where = $d['lesson_id'] ? 'on the lesson page' : ( isset( $on_paper[ $p->ID ] ) ? 'on a paper' : 'no lesson linked' );
 				$rows[] = [
 					'id'        => $p->ID,
 					'kind'      => 'Worksheet',
@@ -867,6 +945,23 @@ class MWM_REST {
 					'board' => $d['board'],
 					'date'  => $p->post_date,
 					'added' => 'Past paper · added ' . mwm_relative_label( $p->post_date ),
+					'data'  => $d,
+				];
+			}
+		}
+		if ( in_array( $kind, [ 'all', 'predicted-papers' ], true ) ) {
+			foreach ( get_posts( [ 'post_type' => 'mwm_predicted_paper', 'post_status' => 'publish', 'posts_per_page' => $limit, 'no_found_rows' => true ] ) as $p ) {
+				$d = mwm_predicted_paper_data( $p );
+				$rows[] = [
+					'id'    => $p->ID,
+					'kind'  => 'Predicted paper',
+					'title' => ( $d['year'] ? $d['year'] . ' · ' : '' ) . $d['title'] . ' · ' . $d['level_name'],
+					'meta'  => $d['board_name'] . ' · ' . ( $d['solutions'] ? 'Question paper + worked solutions' : 'Question paper · worked solutions still to come' ),
+					'url'   => mwm_page_url( 'predicted-papers' ),
+					'level_slug' => $d['level'],
+					'board' => $d['board'],
+					'date'  => $p->post_date,
+					'added' => 'Predicted paper · added ' . mwm_relative_label( $p->post_date ),
 					'data'  => $d,
 				];
 			}
@@ -935,7 +1030,7 @@ class MWM_REST {
 	}
 
 	private static function studio_types(): array {
-		return [ 'mwm_lesson', 'mwm_worksheet', 'mwm_past_paper', 'mwm_exam_date', 'mwm_quiz', 'mwm_pathway' ];
+		return [ 'mwm_lesson', 'mwm_worksheet', 'mwm_past_paper', 'mwm_predicted_paper', 'mwm_exam_date', 'mwm_quiz', 'mwm_pathway' ];
 	}
 
 	public static function studio_trash( WP_REST_Request $r ): WP_REST_Response|WP_Error {

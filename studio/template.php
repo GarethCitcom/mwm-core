@@ -9,7 +9,7 @@ $user   = wp_get_current_user();
 $name   = $user->first_name ?: ( $user->display_name ?: $user->user_login );
 $name   = explode( ' ', trim( $name ) )[0];
 $theme  = get_theme_file_uri( 'assets/img' );
-// Past papers and exam dates are reached from the dashboard cards, not the nav.
+// Past papers, predicted papers and exam dates are reached from the dashboard cards, not the nav.
 $views  = [ 'dash' => 'Dashboard', 'lesson' => 'Add a lesson', 'worksheets' => 'Add a worksheet', 'content' => 'Your content' ];
 if ( MWM_Stats::available() ) {
 	$views['stats'] = 'Site stats';

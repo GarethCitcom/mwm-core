@@ -82,6 +82,7 @@ class MWM_Studio {
 			'urls'      => [
 				'home'       => home_url( '/' ),
 				'pastPapers' => mwm_page_url( 'past-papers' ),
+				'predictedPapers' => mwm_page_url( 'predicted-papers' ),
 				'revision'   => mwm_page_url( 'revision' ),
 				'worksheets' => mwm_page_url( 'worksheets' ),
 				'calendar'   => mwm_page_url( 'calendar' ),
