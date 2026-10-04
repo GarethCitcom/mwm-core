@@ -356,6 +356,74 @@ class MWM_Fields {
 		] );
 
 		/* ---------------------------------------------------------------
+		 * Predicted paper
+		 * ------------------------------------------------------------ */
+		acf_add_local_field_group( [
+			'key'      => 'group_mwm_predicted_paper',
+			'title'    => 'Predicted paper',
+			'fields'   => [
+				self::tax_field( 'field_mwm_pr_board', 'board', 'Exam board', 'mwm_board', 'radio', '', true ),
+				self::tax_field( 'field_mwm_pr_level', 'level', 'Level', 'mwm_level', 'radio', '', true ),
+				[
+					'key'           => 'field_mwm_pr_year',
+					'label'         => 'Exam year',
+					'name'          => 'exam_year',
+					'type'          => 'number',
+					'min'           => 2024,
+					'max'           => 2040,
+					'required'      => 1,
+					'instructions'  => 'The exam this paper predicts, e.g. 2027.',
+				],
+				[
+					'key'           => 'field_mwm_pr_name',
+					'label'         => 'Paper name',
+					'name'          => 'paper_name',
+					'type'          => 'text',
+					'required'      => 1,
+					'placeholder'   => 'e.g. Paper 1 Pure Mathematics',
+					'instructions'  => 'What students see on the row. There are no series or paper-number filters for predicted papers, so say it all here.',
+				],
+				[
+					'key'           => 'field_mwm_pr_calc',
+					'label'         => 'Calculator paper',
+					'name'          => 'calculator',
+					'type'          => 'true_false',
+					'ui'            => 1,
+					'default_value' => 1,
+				],
+				[
+					'key'           => 'field_mwm_pr_qp',
+					'label'         => 'Question paper PDF',
+					'name'          => 'question_paper',
+					'type'          => 'file',
+					'return_format' => 'id',
+					'mime_types'    => 'pdf',
+					'required'      => 1,
+				],
+				[
+					'key'           => 'field_mwm_pr_sol',
+					'label'         => 'Worked solutions PDF',
+					'name'          => 'worked_solutions',
+					'type'          => 'file',
+					'return_format' => 'id',
+					'mime_types'    => 'pdf',
+					'instructions'  => 'Can come later. Until then the site says “Worked solutions coming soon”.',
+				],
+				[
+					'key'           => 'field_mwm_pr_worksheets',
+					'label'         => 'Practise what comes up',
+					'name'          => 'worksheets',
+					'type'          => 'relationship',
+					'post_type'     => [ 'mwm_worksheet' ],
+					'return_format' => 'id',
+					'filters'       => [ 'search', 'taxonomy' ],
+					'instructions'  => 'Worksheets that match the topics in this paper.',
+				],
+			],
+			'location' => [ [ [ 'param' => 'post_type', 'operator' => '==', 'value' => 'mwm_predicted_paper' ] ] ],
+		] );
+
+		/* ---------------------------------------------------------------
 		 * Exam date
 		 * ------------------------------------------------------------ */
 		acf_add_local_field_group( [

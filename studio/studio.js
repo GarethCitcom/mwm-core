@@ -126,6 +126,11 @@
 		var now = new Date();
 		return { id: 0, board: keep.board || 'edexcel', season: keep.season || (now.getMonth() >= 5 ? 'June' : 'November'), year: keep.year || (now.getMonth() >= 5 ? now.getFullYear() : now.getFullYear() - 1), tier: keep.tier || 'higher', paper: '1', qp: null, ms: null, worksheets: [], wsPdfs: [], published: null, publishing: false, error: '', editingTitle: '' };
 	}
+	function freshPredicted(keep) {
+		var now = new Date();
+		// Predicted papers are for the coming exam season: default to next year from September onwards.
+		return { id: 0, board: keep.board || 'edexcel', level: keep.level || 'gcse-higher', year: keep.year || (now.getMonth() >= 8 ? now.getFullYear() + 1 : now.getFullYear()), name: '', calculator: true, qp: null, sol: null, worksheets: [], wsPdfs: [], published: null, publishing: false, error: '', editingTitle: '' };
+	}
 	function freshWorksheet() {
 		return { id: 0, title: '', level: 'gcse-foundation', topic: 'number', subtopic: '', pdf: null, ans: null, desc: '', published: null, publishing: false, error: '', editingTitle: '' };
 	}
@@ -135,6 +140,7 @@
 		content: B.content, kindFilter: 'All', issueFilter: '', levelFilter: '', topicFilter: '', boardFilter: '', search: '', confirmId: null, lastDeleted: null, levelBusy: null,
 		lesson: freshLesson(),
 		pp: freshPaper({}),
+		pr: freshPredicted({}),
 		pw: freshPathway(),
 		dismissed: B.dismissed || {},
 		suggestions: B.suggestions || { items: [], hidden: [], total: 0, scanned_label: '' },
@@ -155,7 +161,10 @@
 		var cards = [
 			{ icon: 'play', title: 'Add a new lesson', text: 'Paste a YouTube link and we’ll do the rest — about two minutes.', view: 'lesson', primary: true },
 			{ icon: 'worksheet', title: 'Add a worksheet', text: 'A worksheet on its own, with its own page to send students to.', view: 'worksheets' },
-			{ icon: 'download', title: 'Upload past papers', text: 'Add a paper and its mark scheme as PDFs.', view: 'papers' }
+			{ icon: 'route', title: 'Revision pathways', text: 'The order students revise topics in, per level, with links to your lessons and an optional week-by-week plan.', view: 'pathways', label: 'Edit pathways' },
+			{ icon: 'download', title: 'Upload past papers', text: 'Add a paper and its mark scheme as PDFs.', view: 'papers' },
+			{ icon: 'paper', title: 'Upload predicted papers', text: 'Your own paper for the next exam, with worked solutions.', view: 'predicted' },
+			{ icon: 'star', title: 'Home page', text: 'Choose the big lesson at the top of the home page (with a shorter title if you like) and the six lessons underneath.', view: 'home', label: 'Choose lessons' }
 		];
 		var status = S.synced ? 'Checked just now' : (S.sync && S.sync.last_relative ? S.sync.last_relative : 'Not checked yet');
 		var syncLabel = S.syncing ? 'Checking…' : (S.synced ? '✓ All up to date' : 'Check for new videos now');
@@ -164,12 +173,10 @@
 			notifsHtml() +
 			'<div class="st-cards">' + cards.map(function (c) {
 				return '<div class="st-card"><span class="st-card__icon">' + icon(c.icon) + '</span><h2>' + esc(c.title) + '</h2><p>' + esc(c.text) + '</p>' +
-					'<button type="button" class="mwm-btn ' + (c.primary ? 'mwm-btn--primary' : 'mwm-btn--secondary') + '" data-go="' + c.view + '">Start</button></div>';
+					'<button type="button" class="mwm-btn ' + (c.primary ? 'mwm-btn--primary' : 'mwm-btn--secondary') + '" data-go="' + c.view + '">' + esc(c.label || 'Start') + '</button></div>';
 			}).join('') + '</div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('play') + '</span><div class="st-card__text"><h2>Suggested from YouTube</h2><p>' + esc((S.suggestions.items || []).length ? (S.suggestions.items.length === 1 ? '1 video on your channel isn’t on the site yet.' : S.suggestions.items.length + ' videos on your channel aren’t on the site yet.') : 'We check your channel overnight for videos that aren’t on the site.') + '</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="suggestions">See suggestions<span aria-hidden="true">→</span></button></div>' +
 			(B.stats ? '<div class="st-card st-card--small"><span class="st-card__icon">' + icon('chart') + '</span><div class="st-card__text"><h2>Site stats</h2><p>How many people visited, what they looked at and what they searched on Google.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="stats">See your stats<span aria-hidden="true">→</span></button></div>' : '') +
-			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('star') + '</span><div class="st-card__text"><h2>Home page</h2><p>Choose the big lesson at the top of the home page (with a shorter title if you like) and the six lessons underneath.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="home">Choose lessons<span aria-hidden="true">→</span></button></div>' +
-			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('route') + '</span><div class="st-card__text"><h2>Revision pathways</h2><p>The order students revise topics in, per level — with links to your lessons and an optional week-by-week plan.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="pathways">Edit pathways<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('calendar') + '</span><div class="st-card__text"><h2>Update exam dates</h2><p>Once a year, when the boards confirm them — verified dates appear on the exam calendar.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="dates">Update dates<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-tintbox"><div class="st-tintbox__head"><h2>Quick Maths &amp; Gaming look after themselves</h2><span class="mwm-meta">' + esc(status) + '</span></div>' +
 			'<p>Anything you add to these YouTube playlists appears on the site overnight, automatically. There’s nothing for you to do here.</p>' +
@@ -361,8 +368,8 @@
 	}
 
 	function viewContent() {
-		var kinds = ['All', 'Lessons', 'Worksheets', 'Past papers', 'Pathways', 'Exam dates', 'Quizzes'];
-		var map = { 'Lessons': 'Lesson', 'Worksheets': 'Worksheet', 'Past papers': 'Past paper', 'Pathways': 'Pathway', 'Exam dates': 'Exam date', 'Quizzes': 'Quiz' };
+		var kinds = ['All', 'Lessons', 'Worksheets', 'Past papers', 'Predicted papers', 'Pathways', 'Exam dates', 'Quizzes'];
+		var map = { 'Lessons': 'Lesson', 'Worksheets': 'Worksheet', 'Past papers': 'Past paper', 'Predicted papers': 'Predicted paper', 'Pathways': 'Pathway', 'Exam dates': 'Exam date', 'Quizzes': 'Quiz' };
 		var ofKind = S.content.filter(function (it) { return S.kindFilter === 'All' || map[S.kindFilter] === it.kind; });
 		// A topic or board filter left over from another kind would silently empty the list, so drop it when the control isn't shown.
 		if (S.topicFilter && !ofKind.some(function (r) { return r.topic_slug; })) { S.topicFilter = ''; }
@@ -403,7 +410,7 @@
 	}
 
 	/* Left-hand cell on a content row: the video thumbnail (click to enlarge, play badge to YouTube) or an icon for everything else. */
-	var KIND_ICON = { 'Lesson': 'play', 'Worksheet': 'worksheet', 'Past paper': 'paper', 'Exam date': 'calendar', 'Quiz': 'quiz', 'Pathway': 'route' };
+	var KIND_ICON = { 'Lesson': 'play', 'Worksheet': 'worksheet', 'Past paper': 'paper', 'Predicted paper': 'paper', 'Exam date': 'calendar', 'Quiz': 'quiz', 'Pathway': 'route' };
 	function listMedia(r) {
 		if (r.kind === 'Lesson' && r.thumb) {
 			var link = watchUrl(r.youtube_id);
@@ -476,9 +483,53 @@
 			(!P.worksheets.length && !P.wsPdfs.length ? '<span class="mwm-meta">No worksheets linked yet.</span>' : '') + '</div>' +
 			'<div class="st-filerow st-filerow--8"><div><div class="st-filerow__label">Upload a revision worksheet PDF</div><div class="st-filerow__status">It gets its own worksheet page, named after this paper.</div></div><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="ppws">Choose PDF</label></div>' +
 			'<div class="st-label st-label--12">Or link an existing worksheet</div>' +
-			'<div class="st-picker" data-ppws><div class="st-picker__control"><input type="text" class="st-input st-picker__input" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-label="Search worksheets" placeholder="Search worksheets by name, e.g. “ratio”…" autocomplete="off" data-ppws-input><span class="st-picker__caret" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></span></div><div class="st-picker__list" role="listbox" hidden data-ppws-list></div></div>' +
+			wsPicker('pp') +
 			'<div class="st-label st-label--28">4 · Publish</div>' +
 			(P.qp || P.id ? '<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish st-publish--12" data-publish-pp' + (P.publishing ? ' disabled' : '') + '>' + (P.publishing ? 'Publishing…' : (P.id ? 'Publish changes' : 'Publish this paper')) + '</button>' : '<p class="st-note st-note--12">Add the question paper PDF above and the publish button appears here.</p>') +
+			(P.error ? '<p class="st-error">' + esc(P.error) + '</p>' : '') + '</div>';
+		return html;
+	}
+
+	/* Search-as-you-type worksheet picker shared by the past and predicted paper forms. `form` says which state it feeds. */
+	function wsPicker(form) {
+		return '<div class="st-picker" data-ppws="' + form + '"><div class="st-picker__control"><input type="text" class="st-input st-picker__input" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-label="Search worksheets" placeholder="Search worksheets by name, e.g. “ratio”…" autocomplete="off" data-ppws-input><span class="st-picker__caret" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></span></div><div class="st-picker__list" role="listbox" hidden data-ppws-list></div></div>';
+	}
+
+	function viewPredicted() {
+		var P = S.pr;
+		var html = '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>' +
+			'<h1 class="st-h1 st-h1--after-back">' + (P.id ? 'Edit a predicted paper' : 'Upload a predicted paper') + '</h1>';
+		if (P.id) { html += '<div class="st-banner">You’re editing <strong>' + esc(P.editingTitle) + '</strong>. Change what you need, then publish again.</div>'; }
+		if (P.published) {
+			html += '<div class="st-success"><span class="st-success__icon">' + icon('tick') + '</span><h2>Published!</h2><p>' + esc(P.published.summary) + '</p>' +
+				'<div class="st-success__actions"><a href="' + esc(B.urls.predictedPapers) + '" class="mwm-btn mwm-btn--primary">See the predicted papers page</a><button type="button" class="mwm-btn mwm-btn--secondary" data-reset-pr>Upload another</button></div></div>';
+			return html;
+		}
+		var thisYear = new Date().getFullYear();
+		var years = [];
+		for (var y = thisYear + 2; y >= thisYear - 1; y--) { years.push(y); }
+		html += '<p class="st-intro">A paper you’ve written for the next exam, with worked solutions. It sits beside the past papers; when the exam has been and gone, remove it from “Your content”.</p>' +
+			'<div class="st-panel"><div class="st-label" style="margin-top:0">1 · Which exam is it for?</div>' +
+			'<div class="st-chips">' + Object.keys(B.boards).map(function (b) { return chip(B.boards[b], P.board === b, { prboard: b }); }).join('') + '</div>' +
+			'<div class="st-label st-label--24">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, P.level === l.slug, { prlevel: l.slug }); }).join('') + '</div>' +
+			'<div class="st-fields" style="margin-top:16px"><label class="st-field">Exam year<select class="mwm-select" data-pr="year">' + years.map(function (yy) { return '<option value="' + yy + '"' + (Number(P.year) === yy ? ' selected' : '') + '>' + yy + '</option>'; }).join('') + '</select></label></div>' +
+			'<div class="st-label st-label--24">What’s the paper called?</div><p class="st-panel__sub" style="margin-top:4px">Students see this on the row. There are no series or paper-number filters for predicted papers, so say it all here.</p>' +
+			'<div class="st-inputrow"><input type="text" class="st-input" value="' + esc(P.name) + '" placeholder="e.g. Paper 1 Pure Mathematics" aria-label="Paper name" data-pr-name></div>' +
+			'<label class="st-check" style="margin-top:12px"><input type="checkbox"' + (P.calculator ? ' checked' : '') + ' data-pr-calc>Calculator paper</label>' +
+			'<div class="st-label st-label--28">2 · Add the PDFs</div>' +
+			'<div class="st-filerow st-filerow--8"><div><div class="st-filerow__label">Question paper</div><div class="st-filerow__status' + (P.qp ? ' is-ok' : '') + '">' + esc(P.qp ? '✓ ' + P.qp.filename + ' added' : 'The paper for students to sit.') + '</div></div><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="prqp">Choose PDF</label></div>' +
+			'<div class="st-filerow"><div><div class="st-filerow__label">Worked solutions <span>(can come later)</span></div><div class="st-filerow__status' + (P.sol ? ' is-ok' : '') + '">' + esc(P.sol ? '✓ ' + P.sol.filename + ' added' : 'Until it’s added, the site shows “Worked solutions coming soon”.') + '</div></div><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="prsol">Choose PDF</label></div>' +
+			'<div class="st-label st-label--28">3 · Practise what comes up <span style="font-weight:400;color:var(--muted)">(optional)</span></div>' +
+			'<p class="st-panel__sub" style="margin-top:4px">Worksheets shown under this paper. Upload a worksheet made for it, or link worksheets that are already on the site.</p>' +
+			'<div class="st-chips st-chips--12" data-pr-links>' + P.worksheets.map(function (w) { return '<span class="mwm-chip mwm-chip--md is-on st-chip--static">' + esc(w.name) + '<button type="button" class="st-chip__x" aria-label="Unlink ' + esc(w.name) + '" data-pr-unlink="' + w.id + '">✕</button></span>'; }).join('') +
+			P.wsPdfs.map(function (f, i) { return '<span class="mwm-chip mwm-chip--md is-on st-chip--static">New: ' + esc(f.filename) + '<button type="button" class="st-chip__x" aria-label="Remove ' + esc(f.filename) + '" data-pr-unpdf="' + i + '">✕</button></span>'; }).join('') +
+			(!P.worksheets.length && !P.wsPdfs.length ? '<span class="mwm-meta">No worksheets linked yet.</span>' : '') + '</div>' +
+			'<div class="st-filerow st-filerow--8"><div><div class="st-filerow__label">Upload a worksheet PDF</div><div class="st-filerow__status">It gets its own worksheet page, named after this paper.</div></div><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="prws">Choose PDF</label></div>' +
+			'<div class="st-label st-label--12">Or link an existing worksheet</div>' +
+			wsPicker('pr') +
+			'<div class="st-label st-label--28">4 · Publish</div>' +
+			'<p class="st-note">The page carries a note that this is your own practice material, not an official ' + esc(B.boards[P.board] || 'exam board') + ' paper.</p>' +
+			(P.qp || P.id ? '<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish st-publish--12" data-publish-pr' + (P.publishing ? ' disabled' : '') + '>' + (P.publishing ? 'Publishing…' : (P.id ? 'Publish changes' : 'Publish this paper')) + '</button>' : '<p class="st-note st-note--12">Add the question paper PDF above and the publish button appears here.</p>') +
 			(P.error ? '<p class="st-error">' + esc(P.error) + '</p>' : '') + '</div>';
 		return html;
 	}
@@ -846,6 +897,7 @@
 			case 'content': html = viewContent(); break;
 			case 'worksheets': html = viewWorksheet(); break;
 			case 'papers': html = viewPapers(); break;
+			case 'predicted': html = viewPredicted(); break;
 			case 'dates': html = viewDates(); break;
 			case 'home': html = viewHome(); break;
 			case 'pathways': html = viewPathways(); break;
@@ -855,8 +907,8 @@
 		}
 		root.innerHTML = html;
 		document.querySelectorAll('[data-studio-nav] [data-view]').forEach(function (a) {
-			// Past papers, exam dates, pathways and suggestions live off the dashboard, so keep Dashboard lit while on them.
-			var on = a.getAttribute('data-view') === S.view || (a.getAttribute('data-view') === 'dash' && (S.view === 'papers' || S.view === 'dates' || S.view === 'pathways' || S.view === 'suggestions' || S.view === 'home'));
+			// Past papers, predicted papers, exam dates, pathways and suggestions live off the dashboard, so keep Dashboard lit while on them.
+			var on = a.getAttribute('data-view') === S.view || (a.getAttribute('data-view') === 'dash' && (S.view === 'papers' || S.view === 'predicted' || S.view === 'dates' || S.view === 'pathways' || S.view === 'suggestions' || S.view === 'home'));
 			a.classList.toggle('is-current', on);
 			if (on) { a.setAttribute('aria-current', 'page'); } else { a.removeAttribute('aria-current'); }
 		});
@@ -1037,6 +1089,10 @@
 			var d = it.data;
 			S.pp = { id: it.id, board: d.board || 'edexcel', season: d.season, year: d.year, tier: d.tier, paper: String(d.paper), qp: d.qp ? { id: 0, filename: 'current question paper', keep: true } : null, ms: d.ms ? { id: 0, filename: 'current mark scheme', keep: true } : null, worksheets: (d.worksheets || []).map(function (w) { return { id: w.id, name: w.name }; }), wsPdfs: [], published: null, publishing: false, error: '', editingTitle: it.title };
 			go('papers');
+		} else if (it.kind === 'Predicted paper') {
+			var pd = it.data;
+			S.pr = { id: it.id, board: pd.board || 'edexcel', level: pd.level || 'gcse-higher', year: pd.year, name: pd.title || '', calculator: !!pd.calculator, qp: pd.qp ? { id: 0, filename: 'current question paper', keep: true } : null, sol: pd.solutions ? { id: 0, filename: 'current worked solutions', keep: true } : null, worksheets: (pd.worksheets || []).map(function (w) { return { id: w.id, name: w.name }; }), wsPdfs: [], published: null, publishing: false, error: '', editingTitle: it.title };
+			go('predicted');
 		} else {
 			go('dates');
 		}
@@ -1084,8 +1140,9 @@
 			else if (q) { pickerCreate(box, q); }
 		}
 	});
-	/* Worksheet search for past papers: queries the public worksheets endpoint as you type. */
+	/* Worksheet search for past and predicted papers: queries the public worksheets endpoint as you type. */
 	var wsSearchTimer = 0, wsSearchSeq = 0, searchTimer = 0;
+	function paperForm(box) { return box && box.getAttribute('data-ppws') === 'pr' ? S.pr : S.pp; }
 	function wsSearch(box, q) {
 		var list = box.querySelector('[data-ppws-list]');
 		var mine = ++wsSearchSeq;
@@ -1094,7 +1151,7 @@
 		list.innerHTML = '<div class="st-picker__empty">Searching…</div>'; list.removeAttribute('hidden'); box.classList.add('is-open');
 		api('worksheets?per_page=8&search=' + encodeURIComponent(q)).then(function (res) {
 			if (mine !== wsSearchSeq) { return; }
-			var linked = S.pp.worksheets.map(function (w) { return w.id; });
+			var linked = paperForm(box).worksheets.map(function (w) { return w.id; });
 			var items = (res.items || []).filter(function (w) { return linked.indexOf(w.id) === -1; });
 			list.innerHTML = items.length
 				? items.map(function (w) { return '<button type="button" class="st-picker__opt" role="option" data-ppws-pick="' + w.id + '" data-ppws-name="' + esc(w.title) + '">' + esc(w.title) + '<span class="st-picker__hint">' + esc([w.level, w.topic].filter(Boolean).join(' · ')) + '</span></button>'; }).join('')
@@ -1131,6 +1188,7 @@
 			var lb = e.target.closest('[data-pw-lesson-box]'), lq = e.target.value, lg = e.target.getAttribute('data-g'), lr = e.target.getAttribute('data-r');
 			clearTimeout(wsSearchTimer); wsSearchTimer = setTimeout(function () { pwLessonSearch(lb, lq, lg, lr); }, 250);
 		}
+		if (e.target.matches('[data-pr-name]')) { S.pr.name = e.target.value; S.pr.error = ''; }
 		if (e.target.matches('[data-ws-title]')) { S.ws.title = e.target.value; S.ws.error = ''; var t = root.querySelector('.st-preview__title'); if (t) { t.textContent = S.ws.title || 'Untitled worksheet'; } }
 		if (e.target.matches('[data-ws-desc]')) { S.ws.desc = e.target.value; }
 	});
@@ -1140,10 +1198,10 @@
 		if (el.matches('[data-pdf]')) {
 			var key = el.getAttribute('data-pdf'), file = el.files && el.files[0];
 			if (!file) { return; }
-			var target = key === 'qp' || key === 'ms' || key === 'ppws' ? S.pp : (key === 'wspdf' || key === 'wsans' ? S.ws : L);
-			var prop = key === 'wspdf' ? 'pdf' : (key === 'wsans' ? 'ans' : key);
+			var target = key === 'qp' || key === 'ms' || key === 'ppws' ? S.pp : (key === 'prqp' || key === 'prsol' || key === 'prws' ? S.pr : (key === 'wspdf' || key === 'wsans' ? S.ws : L));
+			var prop = { wspdf: 'pdf', wsans: 'ans', prqp: 'qp', prsol: 'sol' }[key] || key;
 			root.classList.add('st-busy');
-			upload(file, 'pdf').then(function (info) { root.classList.remove('st-busy'); if (key === 'ppws') { S.pp.wsPdfs.push(info); } else { target[prop] = info; } if (target !== L) { target.error = ''; } render(); })
+			upload(file, 'pdf').then(function (info) { root.classList.remove('st-busy'); if (key === 'ppws' || key === 'prws') { target.wsPdfs.push(info); } else { target[prop] = info; } if (target !== L) { target.error = ''; } render(); })
 				.catch(function (err) { root.classList.remove('st-busy'); if (target !== L) { target.error = err.message; } else { toast(err.message); } render(); });
 		} else if (el.matches('[data-quiz-file]')) {
 			var qf = el.files && el.files[0];
@@ -1158,6 +1216,8 @@
 			upload(img, 'image').then(function (info) { root.classList.remove('st-busy'); L.quizImages[idx] = info; render(); })
 				.catch(function (err) { root.classList.remove('st-busy'); toast(err.message); });
 		} else if (el.matches('[data-pp]')) { S.pp[el.getAttribute('data-pp')] = el.value; }
+		else if (el.matches('[data-pr]')) { S.pr[el.getAttribute('data-pr')] = el.value; }
+		else if (el.matches('[data-pr-calc]')) { S.pr.calculator = el.checked; }
 		else if (el.matches('[data-ed="paper"]')) { S.ed.paper = el.value; }
 		else if (el.matches('[data-ed="checked"]')) { S.ed.checked = el.checked; S.ed.error = ''; render(); }
 		else if (el.matches('[data-pw="complete"]')) { S.pw.complete = el.checked; }
@@ -1316,8 +1376,8 @@
 		if ((el = e.target.closest('[data-pp-unlink]'))) { var uid = Number(el.getAttribute('data-pp-unlink')); P.worksheets = P.worksheets.filter(function (w) { return w.id !== uid; }); render(); return; }
 		if ((el = e.target.closest('[data-pp-unpdf]'))) { P.wsPdfs.splice(Number(el.getAttribute('data-pp-unpdf')), 1); render(); return; }
 		if ((el = e.target.closest('[data-ppws-pick]'))) {
-			var wid = Number(el.getAttribute('data-ppws-pick'));
-			if (!P.worksheets.some(function (w) { return w.id === wid; })) { P.worksheets.push({ id: wid, name: el.getAttribute('data-ppws-name') }); }
+			var wid = Number(el.getAttribute('data-ppws-pick')), form = paperForm(el.closest('[data-ppws]'));
+			if (!form.worksheets.some(function (w) { return w.id === wid; })) { form.worksheets.push({ id: wid, name: el.getAttribute('data-ppws-name') }); }
 			render(); return;
 		}
 		if ((el = e.target.closest('[data-tier]'))) { P.tier = el.getAttribute('data-tier'); render(); return; }
@@ -1336,6 +1396,27 @@
 			return;
 		}
 		if ((el = e.target.closest('[data-reset-pp]'))) { S.pp = freshPaper({ board: P.board, tier: P.tier, season: P.season, year: P.year }); render(); return; }
+		// Predicted papers
+		var R = S.pr;
+		if ((el = e.target.closest('[data-prboard]'))) { R.board = el.getAttribute('data-prboard'); render(); return; }
+		if ((el = e.target.closest('[data-prlevel]'))) { R.level = el.getAttribute('data-prlevel'); render(); return; }
+		if ((el = e.target.closest('[data-pr-unlink]'))) { var ruid = Number(el.getAttribute('data-pr-unlink')); R.worksheets = R.worksheets.filter(function (w) { return w.id !== ruid; }); render(); return; }
+		if ((el = e.target.closest('[data-pr-unpdf]'))) { R.wsPdfs.splice(Number(el.getAttribute('data-pr-unpdf')), 1); render(); return; }
+		if ((el = e.target.closest('[data-publish-pr]'))) {
+			if (!R.name.trim()) { R.error = 'Give the paper a name students will recognise, e.g. “Paper 1 Pure Mathematics”.'; render(); return; }
+			R.publishing = true; R.error = ''; render();
+			var rbody = { id: R.id, board: R.board, level: R.level, year: Number(R.year), name: R.name.trim(), calculator: R.calculator, worksheets: R.worksheets.map(function (w) { return w.id; }), worksheet_pdfs: R.wsPdfs.map(function (f) { return f.id; }) };
+			if (R.qp && !R.qp.keep) { rbody.question_paper = R.qp.id; }
+			if (!R.sol) { rbody.worked_solutions = 0; } else if (!R.sol.keep) { rbody.worked_solutions = R.sol.id; }
+			api('studio/predicted-papers', { method: 'POST', body: rbody }).then(function (d) {
+				R.publishing = false;
+				var rws = (d.worksheets || []).length;
+				R.published = { summary: B.boards[R.board] + ' · Predicted ' + R.year + ' · ' + levelName(R.level) + ' · ' + R.name.trim() + (d.solutions ? ' with worked solutions' : '. Worked solutions still to come; the site says so for you') + (rws ? ' · ' + rws + (rws === 1 ? ' worksheet linked' : ' worksheets linked') : '') };
+				refreshContent(); render();
+			}).catch(function (err) { R.publishing = false; R.error = err.message; render(); });
+			return;
+		}
+		if ((el = e.target.closest('[data-reset-pr]'))) { S.pr = freshPredicted({ board: R.board, level: R.level, year: R.year }); render(); return; }
 		// Exam dates
 		if ((el = e.target.closest('[data-session]'))) { E.session = el.getAttribute('data-session'); render(); return; }
 		if ((el = e.target.closest('[data-edlevel]'))) { E.level = el.getAttribute('data-edlevel'); render(); return; }

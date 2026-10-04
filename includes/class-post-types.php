@@ -9,9 +9,9 @@ class MWM_Post_Types {
 
 	public static function init(): void {
 		add_action( 'init', [ __CLASS__, 'register' ], 5 );
-		// Sitemaps: past papers have no page of their own (they redirect to the listing) and taxonomy archives redirect too.
+		// Sitemaps: past and predicted papers have no page of their own (they redirect to the listing) and taxonomy archives redirect too.
 		add_filter( 'wp_sitemaps_post_types', static function ( array $types ): array {
-			unset( $types['mwm_past_paper'] );
+			unset( $types['mwm_past_paper'], $types['mwm_predicted_paper'] );
 			return $types;
 		} );
 		add_filter( 'wp_sitemaps_posts_query_args', static function ( array $args, string $post_type ): array {
@@ -44,12 +44,12 @@ class MWM_Post_Types {
 				}
 			}, 20 );
 		}
-		add_action( 'template_redirect', [ __CLASS__, 'redirect_single_past_paper' ] );
+		add_action( 'template_redirect', [ __CLASS__, 'redirect_single_paper' ] );
 	}
 
 	public static function register(): void {
 		/* ---- Taxonomies ---- */
-		register_taxonomy( 'mwm_level', [ 'mwm_lesson', 'mwm_worksheet', 'mwm_exam_date', 'mwm_pathway' ], [
+		register_taxonomy( 'mwm_level', [ 'mwm_lesson', 'mwm_worksheet', 'mwm_exam_date', 'mwm_pathway', 'mwm_predicted_paper' ], [
 			'labels'            => self::labels( 'Level', 'Levels' ),
 			'public'            => true,
 			'hierarchical'      => false,
@@ -90,7 +90,7 @@ class MWM_Post_Types {
 			'meta_box_cb'       => false,
 		] );
 
-		register_taxonomy( 'mwm_board', [ 'mwm_past_paper', 'mwm_exam_date', 'mwm_pathway' ], [
+		register_taxonomy( 'mwm_board', [ 'mwm_past_paper', 'mwm_predicted_paper', 'mwm_exam_date', 'mwm_pathway' ], [
 			'labels'            => self::labels( 'Exam board', 'Exam boards' ),
 			'public'            => false,
 			'show_ui'           => true,
@@ -148,6 +148,19 @@ class MWM_Post_Types {
 			'has_archive'  => false,
 			'rewrite'      => [ 'slug' => 'past-paper', 'with_front' => false ],
 			'taxonomies'   => [ 'mwm_board' ],
+		] );
+
+		// Melissa's own predicted papers: written for a coming exam, retired afterwards (they never become past papers).
+		register_post_type( 'mwm_predicted_paper', [
+			'labels'       => self::labels( 'Predicted paper', 'Predicted papers' ),
+			'public'       => true,
+			'show_in_rest' => true,
+			'menu_icon'    => 'dashicons-lightbulb',
+			'menu_position'=> 22,
+			'supports'     => [ 'title', 'custom-fields' ],
+			'has_archive'  => false,
+			'rewrite'      => [ 'slug' => 'predicted-paper', 'with_front' => false ],
+			'taxonomies'   => [ 'mwm_board', 'mwm_level' ],
 		] );
 
 		register_post_type( 'mwm_exam_date', [
@@ -276,11 +289,15 @@ class MWM_Post_Types {
 	}
 
 	/**
-	 * Individual past papers have no page of their own — send them to the list.
+	 * Individual past and predicted papers have no page of their own, so send them to their list.
 	 */
-	public static function redirect_single_past_paper(): void {
+	public static function redirect_single_paper(): void {
 		if ( is_singular( 'mwm_past_paper' ) ) {
 			wp_safe_redirect( mwm_page_url( 'past-papers' ), 301 );
+			exit;
+		}
+		if ( is_singular( 'mwm_predicted_paper' ) ) {
+			wp_safe_redirect( mwm_page_url( 'predicted-papers' ), 301 );
 			exit;
 		}
 	}

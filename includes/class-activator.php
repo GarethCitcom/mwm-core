@@ -17,6 +17,21 @@ class MWM_Activator {
 		self::create_pages();
 		MWM_YouTube::schedule();
 		flush_rewrite_rules();
+		update_option( 'mwm_core_version', MWM_CORE_VERSION );
+	}
+
+	/**
+	 * Pages added in later versions are created on the first request after the plugin files update,
+	 * so nobody has to deactivate and reactivate. Keyed on the plugin version.
+	 */
+	public static function maybe_upgrade(): void {
+		if ( get_option( 'mwm_core_version' ) === MWM_CORE_VERSION ) {
+			return;
+		}
+		self::add_caps();
+		self::create_pages();
+		flush_rewrite_rules();
+		update_option( 'mwm_core_version', MWM_CORE_VERSION );
 	}
 
 	public static function deactivate(): void {
@@ -93,6 +108,7 @@ class MWM_Activator {
 			'revision'    => [ 'title' => 'Revision', 'slug' => 'revision', 'parent' => '', 'content' => '<!-- wp:acf/pathway /-->' ],
 			'calendar'    => [ 'title' => 'Exam calendar', 'slug' => 'exam-calendar', 'parent' => 'revision', 'content' => '<!-- wp:acf/exam-calendar /-->' ],
 			'past-papers' => [ 'title' => 'Past papers', 'slug' => 'past-papers', 'parent' => 'revision', 'content' => '<!-- wp:acf/past-papers /-->' ],
+			'predicted-papers' => [ 'title' => 'Predicted papers', 'slug' => 'predicted-papers', 'parent' => 'revision', 'content' => '<!-- wp:acf/predicted-papers /-->' ],
 			'quick-maths' => [ 'title' => 'Quick Maths', 'slug' => 'quick-maths', 'parent' => '', 'content' => '<!-- wp:acf/quick-maths /-->' ],
 			'gaming'      => [ 'title' => 'Gaming & Story Maths', 'slug' => 'gaming-story-maths', 'parent' => '', 'content' => '<!-- wp:acf/gaming-story /-->' ],
 			'my-learning' => [ 'title' => 'My Learning', 'slug' => 'my-learning', 'parent' => '', 'content' => '<!-- wp:acf/my-learning /-->' ],
