@@ -161,8 +161,10 @@
 		var cards = [
 			{ icon: 'play', title: 'Add a new lesson', text: 'Paste a YouTube link and we’ll do the rest — about two minutes.', view: 'lesson', primary: true },
 			{ icon: 'worksheet', title: 'Add a worksheet', text: 'A worksheet on its own, with its own page to send students to.', view: 'worksheets' },
+			{ icon: 'route', title: 'Revision pathways', text: 'The order students revise topics in, per level — with links to your lessons and an optional week-by-week plan.', view: 'pathways', label: 'Edit pathways' },
 			{ icon: 'download', title: 'Upload past papers', text: 'Add a paper and its mark scheme as PDFs.', view: 'papers' },
-			{ icon: 'paper', title: 'Upload predicted papers', text: 'Your own paper for the next exam, with worked solutions.', view: 'predicted' }
+			{ icon: 'paper', title: 'Upload predicted papers', text: 'Your own paper for the next exam, with worked solutions.', view: 'predicted' },
+			{ icon: 'star', title: 'Home page', text: 'Choose the big lesson at the top of the home page (with a shorter title if you like) and the six lessons underneath.', view: 'home', label: 'Choose lessons' }
 		];
 		var status = S.synced ? 'Checked just now' : (S.sync && S.sync.last_relative ? S.sync.last_relative : 'Not checked yet');
 		var syncLabel = S.syncing ? 'Checking…' : (S.synced ? '✓ All up to date' : 'Check for new videos now');
@@ -171,12 +173,10 @@
 			notifsHtml() +
 			'<div class="st-cards">' + cards.map(function (c) {
 				return '<div class="st-card"><span class="st-card__icon">' + icon(c.icon) + '</span><h2>' + esc(c.title) + '</h2><p>' + esc(c.text) + '</p>' +
-					'<button type="button" class="mwm-btn ' + (c.primary ? 'mwm-btn--primary' : 'mwm-btn--secondary') + '" data-go="' + c.view + '">Start</button></div>';
+					'<button type="button" class="mwm-btn ' + (c.primary ? 'mwm-btn--primary' : 'mwm-btn--secondary') + '" data-go="' + c.view + '">' + esc(c.label || 'Start') + '</button></div>';
 			}).join('') + '</div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('play') + '</span><div class="st-card__text"><h2>Suggested from YouTube</h2><p>' + esc((S.suggestions.items || []).length ? (S.suggestions.items.length === 1 ? '1 video on your channel isn’t on the site yet.' : S.suggestions.items.length + ' videos on your channel aren’t on the site yet.') : 'We check your channel overnight for videos that aren’t on the site.') + '</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="suggestions">See suggestions<span aria-hidden="true">→</span></button></div>' +
 			(B.stats ? '<div class="st-card st-card--small"><span class="st-card__icon">' + icon('chart') + '</span><div class="st-card__text"><h2>Site stats</h2><p>How many people visited, what they looked at and what they searched on Google.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="stats">See your stats<span aria-hidden="true">→</span></button></div>' : '') +
-			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('star') + '</span><div class="st-card__text"><h2>Home page</h2><p>Choose the big lesson at the top of the home page (with a shorter title if you like) and the six lessons underneath.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="home">Choose lessons<span aria-hidden="true">→</span></button></div>' +
-			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('route') + '</span><div class="st-card__text"><h2>Revision pathways</h2><p>The order students revise topics in, per level — with links to your lessons and an optional week-by-week plan.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="pathways">Edit pathways<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-card st-card--small"><span class="st-card__icon">' + icon('calendar') + '</span><div class="st-card__text"><h2>Update exam dates</h2><p>Once a year, when the boards confirm them — verified dates appear on the exam calendar.</p></div><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-go="dates">Update dates<span aria-hidden="true">→</span></button></div>' +
 			'<div class="st-tintbox"><div class="st-tintbox__head"><h2>Quick Maths &amp; Gaming look after themselves</h2><span class="mwm-meta">' + esc(status) + '</span></div>' +
 			'<p>Anything you add to these YouTube playlists appears on the site overnight, automatically. There’s nothing for you to do here.</p>' +
