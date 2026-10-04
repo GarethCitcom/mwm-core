@@ -161,7 +161,7 @@
 		var cards = [
 			{ icon: 'play', title: 'Add a new lesson', text: 'Paste a YouTube link and we’ll do the rest — about two minutes.', view: 'lesson', primary: true },
 			{ icon: 'worksheet', title: 'Add a worksheet', text: 'A worksheet on its own, with its own page to send students to.', view: 'worksheets' },
-			{ icon: 'route', title: 'Revision pathways', text: 'The order students revise topics in, per level — with links to your lessons and an optional week-by-week plan.', view: 'pathways', label: 'Edit pathways' },
+			{ icon: 'route', title: 'Revision pathways', text: 'The order students revise topics in, per level, with links to your lessons and an optional week-by-week plan.', view: 'pathways', label: 'Edit pathways' },
 			{ icon: 'download', title: 'Upload past papers', text: 'Add a paper and its mark scheme as PDFs.', view: 'papers' },
 			{ icon: 'paper', title: 'Upload predicted papers', text: 'Your own paper for the next exam, with worked solutions.', view: 'predicted' },
 			{ icon: 'star', title: 'Home page', text: 'Choose the big lesson at the top of the home page (with a shorter title if you like) and the six lessons underneath.', view: 'home', label: 'Choose lessons' }
@@ -499,7 +499,7 @@
 		var P = S.pr;
 		var html = '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>' +
 			'<h1 class="st-h1 st-h1--after-back">' + (P.id ? 'Edit a predicted paper' : 'Upload a predicted paper') + '</h1>';
-		if (P.id) { html += '<div class="st-banner">You’re editing <strong>' + esc(P.editingTitle) + '</strong> — change what you need, then publish again.</div>'; }
+		if (P.id) { html += '<div class="st-banner">You’re editing <strong>' + esc(P.editingTitle) + '</strong>. Change what you need, then publish again.</div>'; }
 		if (P.published) {
 			html += '<div class="st-success"><span class="st-success__icon">' + icon('tick') + '</span><h2>Published!</h2><p>' + esc(P.published.summary) + '</p>' +
 				'<div class="st-success__actions"><a href="' + esc(B.urls.predictedPapers) + '" class="mwm-btn mwm-btn--primary">See the predicted papers page</a><button type="button" class="mwm-btn mwm-btn--secondary" data-reset-pr>Upload another</button></div></div>';
@@ -513,7 +513,7 @@
 			'<div class="st-chips">' + Object.keys(B.boards).map(function (b) { return chip(B.boards[b], P.board === b, { prboard: b }); }).join('') + '</div>' +
 			'<div class="st-label st-label--24">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, P.level === l.slug, { prlevel: l.slug }); }).join('') + '</div>' +
 			'<div class="st-fields" style="margin-top:16px"><label class="st-field">Exam year<select class="mwm-select" data-pr="year">' + years.map(function (yy) { return '<option value="' + yy + '"' + (Number(P.year) === yy ? ' selected' : '') + '>' + yy + '</option>'; }).join('') + '</select></label></div>' +
-			'<div class="st-label st-label--24">What’s the paper called?</div><p class="st-panel__sub" style="margin-top:4px">Students see this on the row — there are no series or paper-number filters for predicted papers, so say it all here.</p>' +
+			'<div class="st-label st-label--24">What’s the paper called?</div><p class="st-panel__sub" style="margin-top:4px">Students see this on the row. There are no series or paper-number filters for predicted papers, so say it all here.</p>' +
 			'<div class="st-inputrow"><input type="text" class="st-input" value="' + esc(P.name) + '" placeholder="e.g. Paper 1 Pure Mathematics" aria-label="Paper name" data-pr-name></div>' +
 			'<label class="st-check" style="margin-top:12px"><input type="checkbox"' + (P.calculator ? ' checked' : '') + ' data-pr-calc>Calculator paper</label>' +
 			'<div class="st-label st-label--28">2 · Add the PDFs</div>' +
@@ -1411,7 +1411,7 @@
 			api('studio/predicted-papers', { method: 'POST', body: rbody }).then(function (d) {
 				R.publishing = false;
 				var rws = (d.worksheets || []).length;
-				R.published = { summary: B.boards[R.board] + ' · Predicted ' + R.year + ' · ' + levelName(R.level) + ' · ' + R.name.trim() + (d.solutions ? ' with worked solutions' : ' — worked solutions still to come, the site says so for you') + (rws ? ' · ' + rws + (rws === 1 ? ' worksheet linked' : ' worksheets linked') : '') };
+				R.published = { summary: B.boards[R.board] + ' · Predicted ' + R.year + ' · ' + levelName(R.level) + ' · ' + R.name.trim() + (d.solutions ? ' with worked solutions' : '. Worked solutions still to come; the site says so for you') + (rws ? ' · ' + rws + (rws === 1 ? ' worksheet linked' : ' worksheets linked') : '') };
 				refreshContent(); render();
 			}).catch(function (err) { R.publishing = false; R.error = err.message; render(); });
 			return;

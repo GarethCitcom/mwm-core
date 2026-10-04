@@ -289,7 +289,7 @@ class MWM_Post_Types {
 	}
 
 	/**
-	 * Individual past and predicted papers have no page of their own — send them to their list.
+	 * Individual past and predicted papers have no page of their own, so send them to their list.
 	 */
 	public static function redirect_single_paper(): void {
 		if ( is_singular( 'mwm_past_paper' ) ) {

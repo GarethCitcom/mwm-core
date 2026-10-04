@@ -751,7 +751,7 @@ class MWM_REST {
 
 	/**
 	 * Predicted papers: board, level, exam year, a free-text paper name, question paper + worked solutions PDFs.
-	 * No series or paper number — a predicted paper is retired after the exam, it never becomes a past paper.
+	 * No series or paper number: a predicted paper is retired after the exam and never becomes a past paper.
 	 */
 	public static function studio_save_predicted_paper( WP_REST_Request $r ): WP_REST_Response|WP_Error {
 		$p     = (array) $r->get_json_params();

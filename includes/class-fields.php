@@ -407,7 +407,7 @@ class MWM_Fields {
 					'type'          => 'file',
 					'return_format' => 'id',
 					'mime_types'    => 'pdf',
-					'instructions'  => 'Can come later — until then the site says “Worked solutions coming soon”.',
+					'instructions'  => 'Can come later. Until then the site says “Worked solutions coming soon”.',
 				],
 				[
 					'key'           => 'field_mwm_pr_worksheets',
