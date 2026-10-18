@@ -36,7 +36,7 @@ class MWM_Fields {
 			'save_terms'    => true,
 			'load_terms'    => true,
 			'return_format' => 'id',
-			'multiple'      => false,
+			'multiple'      => in_array( $type, [ 'checkbox', 'multi_select' ], true ),
 			'allow_null'    => ! $required,
 			'required'      => $required ? 1 : 0,
 			'instructions'  => $instructions,
@@ -87,7 +87,7 @@ class MWM_Fields {
 					'type'         => 'url',
 					'instructions' => 'Usually the YouTube thumbnail. A featured image, if set, takes priority.',
 				],
-				self::tax_field( 'field_mwm_lesson_level', 'level', 'Level', 'mwm_level', 'radio', '', true ),
+				self::tax_field( 'field_mwm_lesson_level', 'level', 'Level', 'mwm_level', 'checkbox', 'Tick every level this lesson suits. It appears under each one.', true ),
 				[
 					'key'           => 'field_mwm_lesson_topic',
 					'label'         => 'Topic',
@@ -177,7 +177,7 @@ class MWM_Fields {
 					'allow_null'    => 1,
 					'instructions'  => 'The lesson this worksheet practises. Level and topic are copied from it if left blank.',
 				],
-				self::tax_field( 'field_mwm_ws_level', 'level', 'Level', 'mwm_level', 'radio' ),
+				self::tax_field( 'field_mwm_ws_level', 'level', 'Level', 'mwm_level', 'checkbox', 'A worksheet that goes with a lesson takes the lesson’s levels.' ),
 				[
 					'key'           => 'field_mwm_ws_topic',
 					'label'         => 'Topic',

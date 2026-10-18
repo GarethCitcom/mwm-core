@@ -8,7 +8,7 @@ Requires **Advanced Custom Fields Pro** (field groups are registered in PHP, not
 
 | Post type        | Slug              | What it is                                                                 |
 |------------------|-------------------|-----------------------------------------------------------------------------|
-| `mwm_lesson`     | `/lesson/{slug}/` | A video. `format` taxonomy says whether it is a **lesson**, a **short** (Quick Maths) or a **gaming** video. |
+| `mwm_lesson`     | `/lesson/{slug}/` | A video. `format` taxonomy says whether it is a **lesson**, a **short** (Quick Maths) or a **gaming** video. A lesson can have more than one level (e.g. GCSE Foundation and Higher) and is listed under each. |
 | `mwm_worksheet`  | `/worksheets/{slug}/`, listed at `/worksheets/` | Worksheet PDF (`pdf`), optional worked answers (`answers`), the lesson it goes with (`lesson`), level and topic. Lessons point back via `worksheet_post`. |
 | `mwm_quiz`       | `/quiz/{slug}/`   | Quiz JSON attached to a lesson (`lesson` field).                            |
 | `mwm_past_paper` | listed on `/revision/past-papers/` | Board, tier, series, paper number, question paper + mark scheme PDFs, matching worksheets. |
@@ -16,7 +16,7 @@ Requires **Advanced Custom Fields Pro** (field groups are registered in PHP, not
 | `mwm_exam_date`  | (no page)         | Board, level, paper label, date, session, verified flag. Feeds exam panels and the calendar. |
 | `mwm_pathway`    | (no page)         | Level (+ optional boards), topic groups → rows (lesson, note, coming soon), suggested revision plan. |
 
-Taxonomies: `mwm_level` (GCSE Foundation / GCSE Higher / A-level), `mwm_topic` (hierarchical: topic → subtopic; term meta holds chip icon, levels, order, browse intro, sync keywords), `mwm_format`, `mwm_theme` (Roblox / Minecraft / Story), `mwm_board` (Edexcel / AQA / OCR).
+Taxonomies: `mwm_level` (GCSE Foundation / GCSE Higher / A-level; lessons and their worksheets can carry several, read them with `mwm_post_levels()` and label them with `mwm_levels_label()`, set them with `mwm_set_lesson_levels()`), `mwm_topic` (hierarchical: topic → subtopic; term meta holds chip icon, levels, order, browse intro, sync keywords), `mwm_format`, `mwm_theme` (Roblox / Minecraft / Story), `mwm_board` (Edexcel / AQA / OCR).
 
 Lesson fields: `youtube_url`, `youtube_id`, `duration_seconds`, `thumbnail_url`, `worksheet` (PDF), `answers` (PDF), `source_id`/`source_url` (old site), `playlist_id` (set by the sync).
 

@@ -476,7 +476,7 @@ class MWM_REST {
 		$id      = (int) ( $p['id'] ?? 0 );
 		$yt      = mwm_youtube_id( (string) ( $p['youtube_url'] ?? $p['youtube_id'] ?? '' ) );
 		$title   = sanitize_text_field( (string) ( $p['title'] ?? '' ) );
-		$level   = sanitize_key( (string) ( $p['level'] ?? '' ) );
+		$levels  = mwm_clean_levels( $p['levels'] ?? ( $p['level'] ?? [] ) ); // `level` (one slug) still accepted.
 		$topic   = sanitize_title( (string) ( $p['topic'] ?? '' ) );
 		$status  = ( $p['status'] ?? 'publish' ) === 'draft' ? 'draft' : 'publish';
 
@@ -527,9 +527,8 @@ class MWM_REST {
 			update_post_meta( $id, 'thumbnail_url', mwm_youtube_thumb( $yt ) );
 		}
 		wp_set_object_terms( $id, 'lesson', 'mwm_format' );
-		if ( $level && isset( mwm_levels()[ $level ] ) ) {
-			wp_set_object_terms( $id, $level, 'mwm_level' );
-			delete_post_meta( $id, 'needs_level_review' ); // Kym has chosen a level in the Studio.
+		if ( $levels ) {
+			mwm_set_lesson_levels( $id, $levels );
 		}
 		if ( $topic ) {
 			$term = get_term_by( 'slug', $topic, 'mwm_topic' );
@@ -898,6 +897,7 @@ class MWM_REST {
 					'thumb'      => $c['thumb'],
 					'youtube_id' => $vbad ? '' : $c['youtube_id'],
 					'level_slug' => $c['level_slug'],
+					'levels'     => $c['levels'],
 					'topic_slug' => $c['topic_slug'],
 					'subtopic_slug' => $c['subtopic_slug'],
 					'date'  => get_post_field( 'post_date', $c['id'] ),
@@ -925,6 +925,7 @@ class MWM_REST {
 					'url'       => $d['url'],
 					'lesson_id' => $d['lesson_id'],
 					'level_slug' => $d['level_slug'],
+					'levels'    => $d['levels'],
 					'topic_slug' => $d['topic_slug'],
 					'subtopic_slug' => $d['subtopic_slug'],
 					'date'      => $p->post_date,
@@ -1054,23 +1055,29 @@ class MWM_REST {
 
 	/**
 	 * Quick level change from the content list (no need to open the lesson wizard).
+	 * Body: { levels: [...] } with the full set the lesson should have; { level: slug } still works and sets just that one.
 	 */
 	public static function studio_set_level( WP_REST_Request $r ): WP_REST_Response|WP_Error {
-		$id    = (int) $r['id'];
-		$p     = (array) $r->get_json_params();
-		$level = sanitize_key( (string) ( $p['level'] ?? '' ) );
+		$id     = (int) $r['id'];
+		$p      = (array) $r->get_json_params();
+		$levels = mwm_clean_levels( $p['levels'] ?? ( $p['level'] ?? [] ) );
 		if ( get_post_type( $id ) !== 'mwm_lesson' ) {
 			return new WP_Error( 'not_found', 'Lesson not found', [ 'status' => 404 ] );
 		}
-		if ( ! isset( mwm_levels()[ $level ] ) ) {
-			return new WP_Error( 'bad_level', 'Pick a level from the list.', [ 'status' => 400 ] );
+		if ( ! $levels ) {
+			return new WP_Error( 'bad_level', 'Every lesson needs at least one level. Pick one from the list.', [ 'status' => 400 ] );
 		}
-		$set = wp_set_object_terms( $id, $level, 'mwm_level' );
-		if ( is_wp_error( $set ) ) {
+		if ( ! mwm_set_lesson_levels( $id, $levels ) ) {
 			return new WP_Error( 'save_failed', 'The level couldn’t be saved just now. Try again in a moment.', [ 'status' => 500 ] );
 		}
-		delete_post_meta( $id, 'needs_level_review' ); // Kym has chosen a level in the Studio.
-		return rest_ensure_response( [ 'ok' => true, 'id' => $id, 'level' => $level, 'level_name' => mwm_level_name( $level ) ] );
+		return rest_ensure_response( [
+			'ok'          => true,
+			'id'          => $id,
+			'levels'      => $levels,
+			'level'       => $levels[0],
+			'level_name'  => mwm_levels_label( $levels ),
+			'level_names' => array_map( 'mwm_level_name', $levels ),
+		] );
 	}
 
 	/** Home page picks + the cards behind them, for the Studio's "Home page" screen. */
