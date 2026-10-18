@@ -91,6 +91,19 @@
 		}).catch(function (err) { box.classList.remove('is-busy'); toast(err.message); });
 	}
 	function levelName(slug) { var l = B.levels.filter(function (x) { return x.slug === slug; })[0]; return l ? l.name : ''; }
+	/* A lesson can suit more than one level. Slugs in the site's order (Foundation, Higher, A-level), no repeats. */
+	function sortLevels(slugs) { return B.levels.map(function (l) { return l.slug; }).filter(function (s) { return slugs.indexOf(s) > -1; }); }
+	/* "GCSE Foundation & Higher", "GCSE Higher & A-level": same wording as mwm_levels_label() on the server. */
+	function levelsLabel(slugs) {
+		var prev = '', names = sortLevels(slugs || []).map(function (s) {
+			var n = levelName(s), short = s.indexOf('gcse-') === 0 && prev.indexOf('gcse-') === 0;
+			prev = s;
+			return short ? n.replace(/^GCSE /, '') : n;
+		});
+		return names.length < 2 ? (names[0] || '') : names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
+	}
+	/* Levels on a content row; older rows only carry level_slug. */
+	function rowLevels(r) { return r.levels && r.levels.length ? r.levels : (r.level_slug ? [r.level_slug] : []); }
 	function topicName(slug) {
 		for (var i = 0; i < B.topics.length; i++) {
 			if (B.topics[i].slug === slug) { return B.topics[i].name; }
@@ -120,7 +133,7 @@
 
 	/* ---------------------------------------------------------------- state */
 	function freshLesson() {
-		return { id: 0, step: 1, yt: '', video: null, videoError: '', finding: false, title: '', level: 'gcse-higher', topic: 'algebra', subtopic: '', ws: null, ans: null, quizText: '', quizResult: null, quizImages: {}, copied: false, publishing: false, published: null, editingTitle: '', publishError: '' };
+		return { id: 0, step: 1, yt: '', video: null, videoError: '', finding: false, title: '', levels: ['gcse-higher'], topic: 'algebra', subtopic: '', ws: null, ans: null, quizText: '', quizResult: null, quizImages: {}, copied: false, publishing: false, published: null, editingTitle: '', publishError: '' };
 	}
 	function freshPaper(keep) {
 		var now = new Date();
@@ -223,7 +236,7 @@
 				'<div class="st-inputrow" style="margin-top:12px"><input type="text" class="st-input" value="' + esc(lessonTitle()) + '" placeholder="e.g. Solving quadratics by factorising" aria-label="Lesson title" maxlength="140" data-lesson-title></div>' +
 				(L.video && L.title && L.title !== L.video.title ? '<p class="st-note st-note--8">On YouTube it’s “' + esc(L.video.title) + '” — <button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-title-reset>use that instead</button></p>' : '') + '</div>';
 			html += '<div class="st-panel"><h2>Where does it belong?</h2><p class="st-panel__sub">Not sure? Pick the closest — you can change it any time.</p>' +
-				'<div class="st-label">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, L.level === l.slug, { level: l.slug }); }).join('') + '</div>' +
+				'<div class="st-label">Level <span style="font-weight:400;color:var(--muted)">(tick more than one if it suits both)</span></div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, L.levels.indexOf(l.slug) > -1, { level: l.slug }); }).join('') + '</div>' +
 				'<div class="st-label st-label--24">Topic</div><div class="st-chips">' + B.topics.map(function (t) { return chip(t.name, L.topic === t.slug, { topic: t.slug }); }).join('') + '</div>';
 			html += '<div class="st-label st-label--24">Subtopic <span style="font-weight:400;color:var(--muted)">(optional)</span></div>' + picker('subtopic', topic, L.subtopic) +
 				'<p class="st-note st-note--8">Can’t find the right one? Type a new name and choose “Create” — it’s added under ' + esc(topic ? topic.name : 'the topic') + ' straight away.</p>';
@@ -259,7 +272,7 @@
 				var extras = [L.ws ? 'Worksheet' : '', L.ans ? 'Answers' : '', L.quizResult && L.quizResult.ok ? 'Quiz (' + L.quizResult.questions.length + ' questions)' : ''].filter(Boolean);
 				var mins = L.video && L.video.minutes_label ? L.video.minutes_label : '';
 				html += '<div class="st-panel"><h2>Check it, then publish</h2><p class="st-panel__sub">This is exactly how students will see it.</p>' +
-					'<div class="st-preview">' + thumbBtn(L.video ? L.video.thumbnail : '', 'st-preview__thumb', L.video ? L.video.title : '', L.video ? watchUrl(L.video.id) : '') + '<div class="st-preview__body"><div class="mwm-tags">' + tag(levelName(L.level), 'mwm-tag--higher') + tag(topicName(L.subtopic || L.topic), 'mwm-tag--outline') + '</div>' +
+					'<div class="st-preview">' + thumbBtn(L.video ? L.video.thumbnail : '', 'st-preview__thumb', L.video ? L.video.title : '', L.video ? watchUrl(L.video.id) : '') + '<div class="st-preview__body"><div class="mwm-tags">' + tag(levelsLabel(L.levels), 'mwm-tag--higher') + tag(topicName(L.subtopic || L.topic), 'mwm-tag--outline') + '</div>' +
 					'<div class="st-preview__title">' + esc(lessonTitle()) + '</div><div class="st-preview__meta">' + esc([mins].concat(extras).filter(Boolean).join(' · ')) + '</div></div></div>' +
 					'<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish" data-publish' + (L.publishing ? ' disabled' : '') + '>' + (L.publishing ? 'Publishing…' : (L.id ? 'Publish changes' : 'Publish lesson')) + '</button>' +
 					(L.publishError ? '<p class="st-error">' + esc(L.publishError) + '</p>' : '') +
@@ -337,7 +350,7 @@
 	}
 	/* Level / topic / board / search filters on the content list. Rows without the field (e.g. a quiz with no lesson) drop out when that filter is set. */
 	function rowMatches(r, skip) {
-		if (skip !== 'level' && S.levelFilter && r.level_slug !== S.levelFilter) { return false; }
+		if (skip !== 'level' && S.levelFilter && rowLevels(r).indexOf(S.levelFilter) < 0) { return false; }
 		if (skip !== 'topic' && S.topicFilter && r.topic_slug !== S.topicFilter) { return false; }
 		if (skip !== 'board' && S.boardFilter && (r.boards ? r.boards.indexOf(S.boardFilter) < 0 : r.board !== S.boardFilter)) { return false; }
 		if (skip !== 'search' && S.search) {
@@ -354,7 +367,7 @@
 		var html = '<div class="st-filters">';
 		html += '<div class="st-filters__group"><span class="st-filters__label">Level</span><div class="st-chips st-chips--flush">' +
 			chip('All', !S.levelFilter, { flevel: '' }, 'st-fchip') +
-			B.levels.map(function (l) { var n = count('level', function (r) { return r.level_slug === l.slug; }); return chip(l.name.replace(/^GCSE /, '') + ' · ' + n, S.levelFilter === l.slug, { flevel: l.slug }, 'st-fchip' + (n ? '' : ' is-empty')); }).join('') + '</div></div>';
+			B.levels.map(function (l) { var n = count('level', function (r) { return rowLevels(r).indexOf(l.slug) > -1; }); return chip(l.name.replace(/^GCSE /, '') + ' · ' + n, S.levelFilter === l.slug, { flevel: l.slug }, 'st-fchip' + (n ? '' : ' is-empty')); }).join('') + '</div></div>';
 		if (hasTopics) {
 			html += '<div class="st-filters__group"><label class="st-filters__label" for="st-ftopic">Topic</label><select id="st-ftopic" class="st-select" data-ftopic><option value="">All topics</option>' +
 				B.topics.map(function (t) { var n = count('topic', function (r) { return r.topic_slug === t.slug; }); return '<option value="' + esc(t.slug) + '"' + (S.topicFilter === t.slug ? ' selected' : '') + (n ? '' : ' disabled') + '>' + esc(t.name) + ' (' + n + ')</option>'; }).join('') + '</select></div>';
@@ -400,10 +413,12 @@
 					? '<span class="st-confirm-text">Remove from the site?</span><button type="button" class="st-smallbtn st-smallbtn--danger" data-remove="' + r.id + '">Yes, remove</button><button type="button" class="st-smallbtn st-smallbtn--keep" data-keep>Keep it</button>'
 					: '<button type="button" class="st-smallbtn" data-edit="' + r.id + '">Edit</button><button type="button" class="st-smallbtn st-smallbtn--quiet" data-ask-remove="' + r.id + '">Remove</button>';
 				var flags = (r.flags || []).map(function (f) { return tag(issueTag(f), 'mwm-tag--warn mwm-tag--sm' + (S.issueFilter === f ? ' is-on' : '')); }).join('');
-				var quick = r.kind === 'Lesson' ? '<div class="st-qlevels' + (S.levelBusy === r.id ? ' is-busy' : '') + '" role="group" aria-label="Level"><span class="st-qlevels__label">Level</span>' + B.levels.map(function (l) {
-					var on = r.level_slug === l.slug, check = on && (r.flags || []).indexOf('level') > -1;
-					return '<button type="button" class="st-qlevel' + (on ? ' is-on' : '') + (check ? ' is-check' : '') + '" aria-pressed="' + (on ? 'true' : 'false') + '" data-qlevel="' + esc(l.slug) + '" data-id="' + r.id + '"' + (S.levelBusy === r.id ? ' disabled' : '') + (check ? ' title="Click to confirm this level"' : '') + '>' + esc(l.name.replace(/^GCSE /, '')) + (check ? ' ✓' : '') + '</button>';
-				}).join('') + (!r.level_slug ? '<span class="st-qlevels__hint">not set yet</span>' : ((r.flags || []).indexOf('level') > -1 ? '<span class="st-qlevels__hint">click to confirm, or pick another</span>' : '')) + '</div>' : '';
+				var rl = rowLevels(r), flagged = (r.flags || []).indexOf('level') > -1;
+				var quick = r.kind === 'Lesson' ? '<div class="st-qlevels' + (S.levelBusy === r.id ? ' is-busy' : '') + '" role="group" aria-label="Levels"><span class="st-qlevels__label">Level</span>' + B.levels.map(function (l) {
+					var on = rl.indexOf(l.slug) > -1, check = on && flagged;
+					var tip = check ? 'Click to confirm this level' : (on ? (rl.length > 1 ? 'Click to take this level off' : '') : 'Click to add this level');
+					return '<button type="button" class="st-qlevel' + (on ? ' is-on' : '') + (check ? ' is-check' : '') + (on && rl.length === 1 && !check ? ' is-only' : '') + '" aria-pressed="' + (on ? 'true' : 'false') + '" data-qlevel="' + esc(l.slug) + '" data-id="' + r.id + '"' + (S.levelBusy === r.id ? ' disabled' : '') + (tip ? ' title="' + tip + '"' : '') + '>' + esc(l.name.replace(/^GCSE /, '')) + (check ? ' ✓' : '') + '</button>';
+				}).join('') + (!rl.length ? '<span class="st-qlevels__hint">not set yet</span>' : (flagged ? '<span class="st-qlevels__hint">click to confirm, or pick the right one</span>' : '')) + '</div>' : '';
 				return '<div class="st-list__row st-list__row--16">' + listMedia(r) + '<div class="st-list__main"><div class="st-list__name">' + esc(r.title) + '</div><div class="st-list__sub">' + esc(r.meta) + '</div>' + (flags ? '<div class="st-list__flags">' + flags + '</div>' : '') + quick + '</div>' + tag(r.kind, 'mwm-tag--outline mwm-tag--sm') + actions + '</div>';
 			}).join('') : '<div class="st-list__row"><span class="mwm-meta">' + (S.issueFilter ? 'Nothing needs attention here — nice.' : (filtersOn() ? 'Nothing matches those filters — try clearing one.' : 'Nothing here yet.')) + '</span></div>') + '</div>' +
 			'<p class="st-note st-note--16">Removing a lesson never deletes your video — it stays safe on YouTube.</p>';
@@ -926,12 +941,13 @@
 	function quizPrompt() {
 		var L = S.lesson;
 		var lines = B.prompt.split('\n');
-		var level = levelName(L.level) || 'GCSE';
+		var level = levelsLabel(L.levels) || 'GCSE';
+		var onlyA = L.levels.length && L.levels.every(function (l) { return l === 'a-level'; });
 		var topic = topicName(L.topic);
 		var sub = L.subtopic ? topicName(L.subtopic) : '';
 		var title = lessonTitle();
 		var where = topic ? ' (topic: ' + topic + (sub ? ' · ' + sub : '') + ')' : '';
-		lines[0] = 'Write a 5-question ' + (level === 'A-level' ? 'A-level' : 'GCSE') + ' maths quiz for ' + level + ' students' +
+		lines[0] = 'Write a 5-question ' + (onlyA ? 'A-level' : (L.levels.indexOf('a-level') > -1 ? 'GCSE and A-level' : 'GCSE')) + ' maths quiz for ' + level + ' students' +
 			(title ? ' based on my lesson “' + title + '”' + where + '. Only test what that lesson covers.' : (topic ? ' about ' + topic + (sub ? ' · ' + sub : '') + '.' : ' about [YOUR TOPIC].'));
 		return lines.join('\n');
 	}
@@ -998,7 +1014,7 @@
 		var L = freshLesson();
 		var url = 'https://youtu.be/' + v.id;
 		L.yt = url;
-		if (v.level) { L.level = v.level; }
+		if (v.level) { L.levels = [v.level]; }
 		if (v.topic) { L.topic = v.topic; L.subtopic = v.subtopic || ''; }
 		S.lesson = L;
 		go('lesson');
@@ -1028,7 +1044,7 @@
 	function publishLesson() {
 		var L = S.lesson;
 		L.publishing = true; L.publishError = ''; render();
-		var body = { id: L.id, youtube_url: L.video ? L.video.id : L.yt, title: lessonTitle(), level: L.level, topic: L.subtopic || L.topic, worksheet: L.ws ? L.ws.id : 0, answers: L.ans ? L.ans.id : 0, seconds: L.video ? L.video.seconds : undefined, thumbnail: L.video ? L.video.thumbnail : undefined };
+		var body = { id: L.id, youtube_url: L.video ? L.video.id : L.yt, title: lessonTitle(), levels: L.levels, level: L.levels[0], topic: L.subtopic || L.topic, worksheet: L.ws ? L.ws.id : 0, answers: L.ans ? L.ans.id : 0, seconds: L.video ? L.video.seconds : undefined, thumbnail: L.video ? L.video.thumbnail : undefined };
 		var quiz = quizPayload();
 		if (quiz !== undefined) { body.quiz = quiz; }
 		api('studio/lessons', { method: 'POST', body: body }).then(function (card) {
@@ -1074,7 +1090,7 @@
 			api('studio/lessons/' + lessonId).then(function (c) {
 				root.classList.remove('st-busy');
 				var L = freshLesson();
-				L.id = c.id; L.editingTitle = c.title; L.title = c.title; L.yt = c.youtube_url; L.level = c.level_slug || 'gcse-higher';
+				L.id = c.id; L.editingTitle = c.title; L.title = c.title; L.yt = c.youtube_url; L.levels = c.levels && c.levels.length ? c.levels.slice() : [c.level_slug || 'gcse-higher'];
 				L.topic = c.topic_slug || 'number'; L.subtopic = c.subtopic_slug || '';
 				L.video = { id: c.youtube_id, title: c.title, thumbnail: c.thumb, seconds: c.seconds, duration_label: '', minutes_label: c.duration, published_label: c.published_label ? '' : '', existing_id: c.id };
 				L.ws = c.worksheet ? { id: c.worksheet.id, filename: c.worksheet.name, url: c.worksheet.url } : null;
@@ -1242,7 +1258,13 @@
 		if ((el = e.target.closest('[data-zoom]'))) { zoomOpen(el.getAttribute('data-zoom'), el.getAttribute('data-zoom-title'), el.getAttribute('data-zoom-link')); return; }
 		// Lesson wizard
 		if ((el = e.target.closest('[data-title-reset]'))) { L.title = L.video ? L.video.title : ''; render(); return; }
-		if ((el = e.target.closest('[data-level]'))) { L.level = el.getAttribute('data-level'); render(); return; }
+		if ((el = e.target.closest('[data-level]'))) {
+			var lv = el.getAttribute('data-level');
+			if (L.levels.indexOf(lv) < 0) { L.levels = sortLevels(L.levels.concat([lv])); }
+			else if (L.levels.length > 1) { L.levels = L.levels.filter(function (x) { return x !== lv; }); }
+			else { toast('Every lesson needs at least one level.'); return; }
+			render(); return;
+		}
 		if ((el = e.target.closest('[data-topic]'))) { L.topic = el.getAttribute('data-topic'); L.subtopic = ''; render(); return; }
 		if ((el = e.target.closest('[data-copy]'))) {
 			try { navigator.clipboard.writeText(quizPrompt()); } catch (err) {}
@@ -1280,14 +1302,30 @@
 		if ((el = e.target.closest('[data-qlevel]'))) {
 			var qid = Number(el.getAttribute('data-id')), qlevel = el.getAttribute('data-qlevel');
 			var qrow = S.content.filter(function (x) { return x.id === qid; })[0];
-			var needsCheck = (qrow && qrow.flags || []).indexOf('level') > -1;
-			// Clicking the level it's already on does nothing — unless the level is flagged for checking, in which case it confirms it.
-			if (!qrow || S.levelBusy || (qrow.level_slug === qlevel && !needsCheck)) { return; }
-			var confirming = qrow.level_slug === qlevel;
+			if (!qrow || S.levelBusy) { return; }
+			var have = rowLevels(qrow), isOn = have.indexOf(qlevel) > -1;
+			var needsCheck = (qrow.flags || []).indexOf('level') > -1;
+			// A guessed level (flagged for checking): clicking it confirms it, clicking another swaps the guess for that one.
+			// Otherwise each button adds or takes off its level, but a lesson always keeps at least one.
+			var next, msg;
+			if (needsCheck) {
+				next = isOn ? have : [qlevel];
+				msg = isOn ? 'confirmed' : 'changed';
+			} else if (!isOn) {
+				next = sortLevels(have.concat([qlevel]));
+				msg = 'added';
+			} else if (have.length > 1) {
+				next = have.filter(function (x) { return x !== qlevel; });
+				msg = 'removed';
+			} else {
+				toast('Every lesson needs at least one level. Add another before taking this one off.');
+				return;
+			}
 			S.levelBusy = qid; render();
-			api('studio/content/' + qid + '/level', { method: 'POST', body: { level: qlevel } }).then(function (d) {
-				qrow.level_slug = d.level; qrow.flags = (qrow.flags || []).filter(function (f) { return f !== 'level'; }); S.levelBusy = null;
-				toast(confirming ? d.level_name + ' confirmed' : 'Level changed to ' + d.level_name); render(); refreshContent();
+			api('studio/content/' + qid + '/level', { method: 'POST', body: { levels: next } }).then(function (d) {
+				qrow.levels = d.levels || [d.level]; qrow.level_slug = d.level; qrow.flags = (qrow.flags || []).filter(function (f) { return f !== 'level'; }); S.levelBusy = null;
+				toast({ confirmed: d.level_name + ' confirmed', changed: 'Level changed to ' + d.level_name, added: levelName(qlevel) + ' added. Now ' + d.level_name, removed: levelName(qlevel) + ' taken off. Now ' + d.level_name }[msg]);
+				render(); refreshContent();
 			}).catch(function (err) { S.levelBusy = null; toast(err.message); render(); });
 			return;
 		}

@@ -1170,7 +1170,20 @@
 	border-color: var(--link);
 	color: #fff;
 	font-weight: 600;
+}
+/* A lesson can have several levels, so a selected level is clickable (it takes that level off)... */
+.st-qlevel.is-on:hover {
+	background: var(--link-hover);
+	border-color: var(--link-hover);
+	color: #fff;
+}
+/* ...except the only one left: a lesson always keeps at least one level. */
+.st-qlevel.is-on.is-only {
 	cursor: default;
+}
+.st-qlevel.is-on.is-only:hover {
+	background: var(--link);
+	border-color: var(--link);
 }
 .st-qlevel.is-on.is-check {
 	cursor: pointer;

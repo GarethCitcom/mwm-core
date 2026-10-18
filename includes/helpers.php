@@ -39,6 +39,72 @@ function mwm_level_name( string $slug ): string {
 	return mwm_levels()[ $slug ]['name'] ?? '';
 }
 
+/**
+ * Clean a level or list of levels from a request: known slugs only, no repeats, in the site's level order
+ * (Foundation, Higher, A-level). Accepts a slug, an array of slugs or a comma-separated string.
+ */
+function mwm_clean_levels( $levels ): array {
+	if ( is_string( $levels ) ) {
+		$levels = explode( ',', $levels );
+	}
+	$wanted = array_map( static fn( $l ) => sanitize_key( (string) $l ), (array) $levels );
+	return array_values( array_intersect( array_keys( mwm_levels() ), $wanted ) );
+}
+
+/**
+ * The levels a post is tagged with, in the site's level order. A lesson can suit more than one.
+ */
+function mwm_post_levels( int $post_id ): array {
+	$terms = get_the_terms( $post_id, 'mwm_level' );
+	if ( ! $terms || is_wp_error( $terms ) ) {
+		return [];
+	}
+	return mwm_clean_levels( wp_list_pluck( $terms, 'slug' ) );
+}
+
+/**
+ * One readable label for a set of levels: "GCSE Higher", "GCSE Foundation & Higher",
+ * "GCSE Higher & A-level", "GCSE Foundation, Higher & A-level".
+ */
+function mwm_levels_label( array $slugs ): string {
+	$names = [];
+	$prev  = '';
+	foreach ( mwm_clean_levels( $slugs ) as $slug ) {
+		$name    = mwm_level_name( $slug );
+		$is_gcse = str_starts_with( $slug, 'gcse-' );
+		// "GCSE Foundation & Higher" rather than "GCSE Foundation & GCSE Higher".
+		$names[] = $is_gcse && str_starts_with( $prev, 'gcse-' ) ? preg_replace( '/^GCSE /', '', $name ) : $name;
+		$prev    = $slug;
+	}
+	if ( count( $names ) < 2 ) {
+		return $names[0] ?? '';
+	}
+	$last = array_pop( $names );
+	return implode( ', ', $names ) . ' & ' . $last;
+}
+
+/**
+ * Set a lesson's levels from the Studio: replaces what was there, keeps its worksheet page in step,
+ * clears the "level needs checking" flag and the cached home page topic counts. Returns the levels saved.
+ */
+function mwm_set_lesson_levels( int $lesson_id, $levels ): array {
+	$levels = mwm_clean_levels( $levels );
+	if ( ! $levels ) {
+		return [];
+	}
+	$set = wp_set_object_terms( $lesson_id, $levels, 'mwm_level' );
+	if ( is_wp_error( $set ) ) {
+		return [];
+	}
+	$ws = (int) get_post_meta( $lesson_id, 'worksheet_post', true );
+	if ( $ws && get_post_type( $ws ) === 'mwm_worksheet' ) {
+		wp_set_object_terms( $ws, $levels, 'mwm_level' );
+	}
+	delete_post_meta( $lesson_id, 'needs_level_review' ); // Kym has chosen the levels in the Studio.
+	delete_transient( 'mwm_topic_browser' );
+	return $levels;
+}
+
 function mwm_boards(): array {
 	return [ 'edexcel' => 'Edexcel', 'aqa' => 'AQA', 'ocr' => 'OCR' ];
 }
@@ -404,7 +470,8 @@ function mwm_worksheet_data( $post, bool $with_lesson = true ): ?array {
 	$pdf       = mwm_attachment_info( get_post_meta( $id, 'pdf', true ) );
 	$answers   = mwm_attachment_info( get_post_meta( $id, 'answers', true ) );
 	$lesson_id = (int) get_post_meta( $id, 'lesson', true );
-	$level     = mwm_get_term_slug( $id, 'mwm_level' );
+	$levels    = mwm_post_levels( $id );
+	$level     = $levels[0] ?? '';
 	$tt        = mwm_lesson_topic_terms( $id );
 	$thumb     = has_post_thumbnail( $id ) ? ( get_the_post_thumbnail_url( $id, 'large' ) ?: '' ) : '';
 	$lesson    = null;
@@ -430,9 +497,10 @@ function mwm_worksheet_data( $post, bool $with_lesson = true ): ?array {
 		'has_answers'   => (bool) $answers,
 		'lesson_id'     => $lesson_id,
 		'lesson'        => $lesson,
-		'level'         => $level ? mwm_level_name( $level ) : '',
-		'level_slug'    => $level,
-		'level_style'   => $level === 'gcse-higher' ? 'higher' : 'tint',
+		'level'         => mwm_levels_label( $levels ),
+		'level_slug'    => $level, // The first of `levels`; use `levels` wherever a worksheet can suit more than one.
+		'levels'        => $levels,
+		'level_style'   => in_array( 'gcse-higher', $levels, true ) ? 'higher' : 'tint',
 		'topic'         => $tt['topic'] ? wp_specialchars_decode( $tt['topic']->name ) : '',
 		'topic_slug'    => $tt['topic'] ? $tt['topic']->slug : '',
 		'subtopic'      => $tt['subtopic'] ? wp_specialchars_decode( $tt['subtopic']->name ) : '',
@@ -633,7 +701,8 @@ function mwm_lesson_card( $post ): ?array {
 	if ( ! $thumb && $yt ) {
 		$thumb = mwm_youtube_thumb( $yt );
 	}
-	$level_slug = mwm_get_term_slug( $id, 'mwm_level' );
+	$levels     = mwm_post_levels( $id );
+	$level_slug = $levels[0] ?? '';
 	$tt         = mwm_lesson_topic_terms( $id );
 	$ws_post    = mwm_lesson_worksheet( $id );
 	$ws_data    = $ws_post ? mwm_worksheet_data( $ws_post, false ) : null;
@@ -654,9 +723,10 @@ function mwm_lesson_card( $post ): ?array {
 		'youtube_url'     => mwm_youtube_watch_url( $yt ),
 		'thumb'           => $thumb,
 		'alt'             => mwm_title( $id ) . ( $format === 'short' ? ' short thumbnail' : ' video thumbnail' ),
-		'level'           => $level_slug ? mwm_level_name( $level_slug ) : '',
-		'level_slug'      => $level_slug,
-		'level_style'     => $level_slug === 'gcse-higher' ? 'higher' : 'tint',
+		'level'           => mwm_levels_label( $levels ),
+		'level_slug'      => $level_slug, // The first of `levels`; a lesson can suit more than one, so prefer `levels`.
+		'levels'          => $levels,
+		'level_style'     => in_array( 'gcse-higher', $levels, true ) ? 'higher' : 'tint',
 		'topic'           => $tt['topic'] ? wp_specialchars_decode( $tt['topic']->name ) : '',
 		'topic_slug'      => $tt['topic'] ? $tt['topic']->slug : '',
 		'subtopic'        => $tt['subtopic'] ? wp_specialchars_decode( $tt['subtopic']->name ) : '',
