@@ -154,7 +154,8 @@
 		lesson: freshLesson(),
 		pp: freshPaper({}),
 		pr: freshPredicted({}),
-		pw: freshPathway(),
+		pathways: (B.pathways && B.pathways.levels) || {},
+		pw: { level: 'gcse-higher', topic: '', data: null, subtopics: [], rows: [], orphans: [], loading: false, saving: false, error: '', saved: '', add: '', paste: '', copied: '', plans: (B.pathways && B.pathways.plans) || {}, planPaste: '', planSaving: false, planSaved: false },
 		dismissed: B.dismissed || {},
 		suggestions: B.suggestions || { items: [], hidden: [], total: 0, scanned_label: '' },
 		sg: { filter: 'all', showHidden: false, confirmAll: false, busy: '', scanning: false, error: '' },
@@ -174,7 +175,7 @@
 		var cards = [
 			{ icon: 'play', title: 'Add a new lesson', text: 'Paste a YouTube link and we’ll do the rest — about two minutes.', view: 'lesson', primary: true },
 			{ icon: 'worksheet', title: 'Add a worksheet', text: 'A worksheet on its own, with its own page to send students to.', view: 'worksheets' },
-			{ icon: 'route', title: 'Revision pathways', text: 'The order students revise topics in, per level, with links to your lessons and an optional week-by-week plan.', view: 'pathways', label: 'Edit pathways' },
+			{ icon: 'route', title: 'Revision pathways', text: 'One per level and topic, built from your lessons. Put the subtopics in order and new lessons slot in by themselves.', view: 'pathways', label: 'Edit pathways' },
 			{ icon: 'download', title: 'Upload past papers', text: 'Add a paper and its mark scheme as PDFs.', view: 'papers' },
 			{ icon: 'paper', title: 'Upload predicted papers', text: 'Your own paper for the next exam, with worked solutions.', view: 'predicted' },
 			{ icon: 'star', title: 'Home page', text: 'Choose the big lesson at the top of the home page (with a shorter title if you like) and the six lessons underneath.', view: 'home', label: 'Choose lessons' }
@@ -304,9 +305,6 @@
 		Worksheets: [
 			{ key: 'unlinked', label: 'Not linked to a lesson', tag: 'No lesson' }
 		],
-		Pathways: [
-			{ key: 'empty', label: 'No topics yet', tag: 'No topics' }
-		]
 	};
 	/* Dashboard notifications: one per issue type, most urgent first. text(n) is the sentence Kym sees. */
 	var NOTIFS = [
@@ -318,9 +316,10 @@
 		{ key: 'no_answers', kind: 'Lessons', text: function (n) { return n === 1 ? '1 lesson worksheet has no worked answers' : n + ' lesson worksheets have no worked answers'; } },
 		{ key: 'unlinked', kind: 'Worksheets', text: function (n) { return n === 1 ? '1 worksheet isn’t linked to a lesson' : n + ' worksheets aren’t linked to a lesson'; } },
 		{ key: 'no_quiz', kind: 'Lessons', text: function (n) { return n === 1 ? '1 lesson has no quiz' : n + ' lessons have no quiz'; } },
-		{ key: 'empty', kind: 'Pathways', text: function (n) { return n === 1 ? '1 pathway has no topics yet' : n + ' pathways have no topics yet'; } }
+		{ key: 'unplaced', view: 'pathways', count: function () { return pwCount('unplaced'); }, text: function (n) { return n === 1 ? '1 subtopic needs placing in its revision pathway' : n + ' subtopics need placing in their revision pathways'; } },
+		{ key: 'orphan', view: 'pathways', count: function () { return pwCount('orphans'); }, text: function (n) { return n === 1 ? '1 lesson has no subtopic, so it sits at the end of its pathway' : n + ' lessons have no subtopic, so they sit at the end of their pathways'; } }
 	];
-	var KIND_OF = { Lessons: 'Lesson', Worksheets: 'Worksheet', Pathways: 'Pathway' };
+	var KIND_OF = { Lessons: 'Lesson', Worksheets: 'Worksheet' };
 	function notifCounts() {
 		return NOTIFS.map(function (n) {
 			var count = n.count ? n.count() : S.content.filter(function (it) { return it.kind === KIND_OF[n.kind] && (it.flags || []).indexOf(n.key) > -1; }).length;
@@ -381,8 +380,8 @@
 	}
 
 	function viewContent() {
-		var kinds = ['All', 'Lessons', 'Worksheets', 'Past papers', 'Predicted papers', 'Pathways', 'Exam dates', 'Quizzes'];
-		var map = { 'Lessons': 'Lesson', 'Worksheets': 'Worksheet', 'Past papers': 'Past paper', 'Predicted papers': 'Predicted paper', 'Pathways': 'Pathway', 'Exam dates': 'Exam date', 'Quizzes': 'Quiz' };
+		var kinds = ['All', 'Lessons', 'Worksheets', 'Past papers', 'Predicted papers', 'Exam dates', 'Quizzes'];
+		var map = { 'Lessons': 'Lesson', 'Worksheets': 'Worksheet', 'Past papers': 'Past paper', 'Predicted papers': 'Predicted paper', 'Exam dates': 'Exam date', 'Quizzes': 'Quiz' };
 		var ofKind = S.content.filter(function (it) { return S.kindFilter === 'All' || map[S.kindFilter] === it.kind; });
 		// A topic or board filter left over from another kind would silently empty the list, so drop it when the control isn't shown.
 		if (S.topicFilter && !ofKind.some(function (r) { return r.topic_slug; })) { S.topicFilter = ''; }
@@ -425,7 +424,7 @@
 	}
 
 	/* Left-hand cell on a content row: the video thumbnail (click to enlarge, play badge to YouTube) or an icon for everything else. */
-	var KIND_ICON = { 'Lesson': 'play', 'Worksheet': 'worksheet', 'Past paper': 'paper', 'Predicted paper': 'paper', 'Exam date': 'calendar', 'Quiz': 'quiz', 'Pathway': 'route' };
+	var KIND_ICON = { 'Lesson': 'play', 'Worksheet': 'worksheet', 'Past paper': 'paper', 'Predicted paper': 'paper', 'Exam date': 'calendar', 'Quiz': 'quiz' };
 	function listMedia(r) {
 		if (r.kind === 'Lesson' && r.thumb) {
 			var link = watchUrl(r.youtube_id);
@@ -550,93 +549,177 @@
 	}
 
 	/* ---------------------------------------------------------------- revision pathways */
-	function freshPathway() {
-		return { id: 0, open: false, title: '', level: 'gcse-higher', boards: [], complete: false, groups: [{ name: '', rows: [{ topic: '', lesson: 0, lesson_title: '', note: '', coming_soon: false }] }], plan: [], published: null, publishing: false, error: '', editingTitle: '' };
+	/* A pathway is one level + one topic: the topic's subtopics in revision order. Lessons slot in by their subtopic,
+	   so Kym only curates the order (and an optional tip for students, shown under the subtopic). Rows here: { subtopic: id (0 = new), name, note, lessons, placed }. */
+	function pwOverview(level) { return (S.pathways && S.pathways[level]) || []; }
+	function pwCount(field) {
+		var n = 0;
+		Object.keys(S.pathways || {}).forEach(function (l) { pwOverview(l).forEach(function (t) { n += t[field] || 0; }); });
+		return n;
 	}
-	function pwRow(g, r, row, step) {
-		var lesson = row.lesson
-			? '<span class="mwm-chip mwm-chip--md is-on st-chip--static">' + icon('play') + esc(row.lesson_title || ('Lesson #' + row.lesson)) + '<button type="button" class="st-chip__x" aria-label="Unlink lesson" data-pw-unlesson data-g="' + g + '" data-r="' + r + '">✕</button></span>'
-			: '<div class="st-picker st-picker--inline" data-pw-lesson-box><div class="st-picker__control"><input type="text" class="st-input st-picker__input" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-label="Link a lesson" placeholder="Link a lesson — search by name…" autocomplete="off" data-pw-lesson-input data-g="' + g + '" data-r="' + r + '"><span class="st-picker__caret" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></span></div><div class="st-picker__list" role="listbox" hidden data-pw-lesson-list></div></div>';
-		return '<div class="st-pw-row"><span class="st-pw-row__step">' + (step < 10 ? '0' + step : step) + '</span>' +
-			'<div class="st-pw-row__main">' +
-			'<input type="text" class="st-input st-pw-row__topic" value="' + esc(row.topic) + '" placeholder="Topic name students see, e.g. Solving linear equations" aria-label="Topic" data-pw-row="topic" data-g="' + g + '" data-r="' + r + '">' +
-			'<div class="st-pw-row__lesson">' + lesson + '</div>' +
-			'<div class="st-pw-row__extras"><input type="text" class="st-input st-input--sm" value="' + esc(row.note) + '" placeholder="Prerequisite note (optional), e.g. Do fractions first" aria-label="Note" data-pw-row="note" data-g="' + g + '" data-r="' + r + '">' +
-			'<label class="st-check st-check--inline"><input type="checkbox"' + (row.coming_soon ? ' checked' : '') + ' data-pw-row="coming_soon" data-g="' + g + '" data-r="' + r + '">Coming soon</label></div></div>' +
-			'<div class="st-pw-row__tools"><button type="button" class="st-iconbtn" aria-label="Move up" data-pw-move="up" data-g="' + g + '" data-r="' + r + '">↑</button><button type="button" class="st-iconbtn" aria-label="Move down" data-pw-move="down" data-g="' + g + '" data-r="' + r + '">↓</button><button type="button" class="st-iconbtn st-iconbtn--danger" aria-label="Remove topic" data-pw-delrow data-g="' + g + '" data-r="' + r + '">✕</button></div></div>';
+	function pwOpen(level, topic) {
+		var P = S.pw;
+		P.level = level; P.topic = topic; P.loading = true; P.error = ''; P.saved = ''; P.add = ''; P.paste = ''; P.copied = ''; render();
+		api('studio/pathways?level=' + encodeURIComponent(level) + '&topic=' + encodeURIComponent(topic)).then(function (d) {
+			P.loading = false; pwLoad(d); render(); window.scrollTo(0, 0);
+		}).catch(function (err) { P.loading = false; P.topic = ''; toast(err.message); render(); });
+	}
+	function pwLoad(d) {
+		var P = S.pw;
+		P.data = d.pathway; P.subtopics = d.subtopics || [];
+		P.rows = d.pathway.rows.filter(function (r) { return !r.needs_subtopic; }).map(function (r) { return { subtopic: r.subtopic_id, name: r.name, note: r.note || '', lessons: r.lessons || [], placed: r.placed }; });
+		P.orphans = d.pathway.rows.filter(function (r) { return r.needs_subtopic; }).map(function (r) { return r.lessons[0]; });
+		P.hidden = (d.pathway.hidden || []).map(function (h) { return { subtopic: h.subtopic_id, name: h.name, lessons: h.lessons || [] }; });
+	}
+	/* One subtopic per line, optional " | note" after it. Numbering and bullets are ignored. */
+	function pwParse(text) {
+		return String(text || '').split(/\r?\n/).map(function (line) {
+			var clean = line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim();
+			if (!clean) { return null; }
+			var parts = clean.split('|');
+			return { name: parts[0].trim(), note: parts.slice(1).join('|').trim() };
+		}).filter(Boolean);
+	}
+	function pwAddRow(name, note, id) {
+		var P = S.pw, key = name.trim().toLowerCase();
+		if (!key) { return false; }
+		var existing = P.rows.filter(function (r) { return r.name.toLowerCase() === key || (id && r.subtopic === id); })[0];
+		if (existing) { if (note) { existing.note = note; } return false; }
+		var known = P.subtopics.filter(function (s) { return s.id === id || s.name.toLowerCase() === key; })[0];
+		P.rows.push({ subtopic: known ? known.id : 0, name: known ? known.name : name.trim(), note: note || '', lessons: [], placed: true });
+		return true;
+	}
+	function pwSave() {
+		var P = S.pw;
+		if (!P.rows.length) { P.error = 'Add at least one subtopic first.'; render(); return; }
+		P.saving = true; P.error = ''; P.saved = ''; render();
+		api('studio/pathways', { method: 'POST', body: { level: P.level, topic: P.topic, rows: P.rows.map(function (r) { return { subtopic: r.subtopic, name: r.name, note: r.note }; }), hidden: (P.hidden || []).map(function (h) { return h.subtopic; }) } }).then(function (d) {
+			P.saving = false; pwLoad(d);
+			if (d.overviews) { S.pathways = d.overviews.levels || S.pathways; P.plans = d.overviews.plans || P.plans; }
+			P.saved = 'Saved. It’s live on the Revision page now.' + (d.created ? ' ' + d.created + (d.created === 1 ? ' new subtopic was created.' : ' new subtopics were created.') : '');
+			render();
+		}).catch(function (err) { P.saving = false; P.error = err.message; render(); });
+	}
+	function pwPlanSave() {
+		var P = S.pw, level = P.level;
+		P.planSaving = true; P.planSaved = false; render();
+		api('studio/revision-plan', { method: 'POST', body: { level: level, plan: P.plans[level] || [] } }).then(function (d) {
+			P.planSaving = false; P.planSaved = true; P.plans[level] = d.plan || [];
+			if (d.overviews) { P.plans = d.overviews.plans || P.plans; }
+			render();
+		}).catch(function (err) { P.planSaving = false; toast(err.message); render(); });
+	}
+	function pwLessonLine(r) {
+		if (!r.lessons.length) { return 'No lesson yet · students see “Coming soon”'; }
+		return r.lessons.map(function (l) { return l.title; }).join(' · ');
+	}
+	/* The format every prompt asks ChatGPT for, so the answer pastes straight back in. */
+	var PW_FORMAT = 'Reply with one subtopic per line, in order, and nothing else: no numbers, bullets, headings or explanations. If a subtopic needs something learned first, add it after a vertical bar, like this:\nSolving quadratics by factorising | needs: expanding double brackets';
+	function pwPrompts() {
+		var P = S.pw, lvl = levelName(P.level), topic = P.data ? P.data.topic_name : '', isA = P.level === 'a-level';
+		var qual = isA ? 'A-level' : 'GCSE';
+		var list = P.rows.length ? P.rows.map(function (r, i) { return (i + 1) + '. ' + r.name + (r.lessons.length ? '' : ' (no lesson yet)'); }).join('\n') : '(none yet)';
+		var intro = 'I run a free maths revision website for UK students. ';
+		return [
+			{ key: 'order', title: 'Put my subtopics in the best order', then: 'Then paste the reply into the box below and press “Use this order”.', text: intro + 'These are my ' + lvl + ' ' + topic + ' subtopics, in the order they are in now:\n\n' + list + '\n\nPut them in the best order for a student to revise them, building from the basics up so each one only needs what came before it. Keep my wording for each subtopic exactly as it is and do not add or remove any. ' + PW_FORMAT },
+			{ key: 'gaps', title: 'What subtopics am I missing?', then: 'Then paste the reply below and press “Add to the end”, and move each new one into place.', text: intro + 'For ' + lvl + ' ' + topic + ' I have these subtopics:\n\n' + list + '\n\nCompare them with the ' + qual + ' maths specifications for Edexcel, AQA and OCR' + (isA ? '' : (P.level === 'gcse-foundation' ? ' (Foundation tier only)' : ' (Higher tier, including Higher-only content)')) + '. List only the subtopics I am missing, using short names in the same style as mine, in the order a student should learn them. ' + PW_FORMAT },
+			{ key: 'notes', title: 'Suggest tips for students', then: 'Then paste the reply below and press “Use this order”: each tip is added to its matching subtopic.', text: intro + 'These are my ' + lvl + ' ' + topic + ' subtopics in revision order:\n\n' + list + '\n\nFor each one, say in a few words what a student should already know before starting it, if anything (for example “needs: fractions”). Keep every subtopic, in this order, with my wording. ' + PW_FORMAT + '\nLeave the part after the bar empty when nothing is needed first.' },
+			{ key: 'full', title: 'Write the whole list from scratch', then: 'Then paste the reply below and press “Use this order”. Anything already here that has lessons but isn’t in the reply drops to the end as “needs placing”.', text: intro + 'Write the complete list of ' + lvl + ' ' + topic + ' subtopics a student needs for the ' + qual + ' maths exam (Edexcel, AQA and OCR' + (isA ? '' : (P.level === 'gcse-foundation' ? ', Foundation tier only' : ', Higher tier')) + '), in the order to revise them, building from the basics up. Use short names a student would recognise, such as “Solving linear equations” or “Sharing in a ratio”, one idea per line, between 10 and 30 lines. ' + PW_FORMAT }
+		];
+	}
+	function pwPlanPrompt(level) {
+		var lvl = levelName(level);
+		var exams = (S.dates || []).filter(function (d) { return d.level_slug === level && d.data && d.data.date; }).map(function (d) { return d.data.full + ' (' + d.data.board_name + ', ' + d.data.paper + ')'; });
+		var topics = pwOverview(level).map(function (t) { return t.topic_name; }).join(', ');
+		return 'I run a free maths revision website for UK students. Draft a week-by-week revision plan for a ' + lvl + ' student. The topics are: ' + (topics || 'Number, Algebra, Ratio & Proportion, Geometry & Measures, Probability, Statistics') + '. ' +
+			(exams.length ? 'The exams are on: ' + exams.join('; ') + '. Start about ten weeks before the first exam and ' : 'Assume the exams are in May and June. Start in early March and ') +
+			'finish the week before the first paper, with the last two weeks on past papers and weak spots. Each week should focus on one or two topics and spend longer on the bigger ones (Number and Algebra).\n' +
+			'Reply with one line per week and nothing else, in this exact format:\n2027-03-01 | Number: fractions, percentages and ratio | Number\n' +
+			'The first part is the Monday of that week as YYYY-MM-DD, the second is the focus for the week in a few words, the third is a one or two word label for a calendar.';
+	}
+	function promptBox(key, title, text, copied, then) {
+		return '<div class="st-prompt"><div class="st-prompt__head"><span class="st-prompt__title">' + esc(title) + '</span><button type="button" class="st-copy" data-pw-copy="' + esc(key) + '">' + (copied === key ? '✓ Copied' : 'Copy') + '</button></div>' +
+			(then ? '<p class="st-prompt__then">' + esc(then) + '</p>' : '') +
+			'<details class="st-prompt__details"><summary>Show the prompt</summary><pre class="st-prompt__text">' + esc(text) + '</pre></details></div>';
+	}
+	function pwPlanPanel(level) {
+		var P = S.pw, plan = P.plans[level] || [];
+		return '<div class="st-panel"><h2>Revision plan · ' + esc(levelName(level)) + ' <span style="font-weight:400;color:var(--muted)">(optional)</span></h2>' +
+			'<p class="st-panel__sub">A suggested week-by-week focus, shown on the exam calendar as shaded weeks. One plan per level, whichever exam board.</p>' +
+			(plan.length ? '<div class="st-pw-plan">' + plan.map(function (w, i) {
+				return '<div class="st-pw-plan__row"><label class="st-field">Week commencing<input type="date" class="st-date" value="' + esc(w.week) + '" data-plan="week" data-i="' + i + '"></label>' +
+					'<label class="st-field st-field--grow">Focus<input type="text" class="st-input st-input--sm" value="' + esc(w.focus) + '" placeholder="e.g. Number: fractions and percentages" data-plan="focus" data-i="' + i + '"></label>' +
+					'<label class="st-field">Calendar label<input type="text" class="st-input st-input--sm" value="' + esc(w.short) + '" placeholder="e.g. Number" data-plan="short" data-i="' + i + '"></label>' +
+					'<button type="button" class="st-iconbtn st-iconbtn--danger" aria-label="Remove week" data-plan-del="' + i + '">✕</button></div>';
+			}).join('') + '</div>' : '<p class="st-note st-note--8">No plan yet for this level.</p>') +
+			'<button type="button" class="mwm-linkbtn mwm-linkbtn--sm st-pw-add" data-plan-add>+ Add a week</button>' +
+			'<div class="st-label st-label--24">Or paste a plan</div><p class="st-panel__sub" style="margin-top:4px">One week per line: <code>2027-03-01 | Number: fractions and ratio | Number</code> (Monday’s date, the focus, a short label). Pasting replaces the plan above.</p>' +
+			'<textarea class="st-textarea st-textarea--paste" rows="4" aria-label="Paste a plan" placeholder="2027-03-01 | Number: fractions and ratio | Number&#10;2027-03-08 | Algebra: equations and sequences | Algebra" data-plan-paste>' + esc(P.planPaste) + '</textarea>' +
+			'<div class="st-actions"><button type="button" class="mwm-btn mwm-btn--secondary mwm-btn--sm" data-plan-paste-apply' + (P.planPaste.trim() ? '' : ' disabled') + '>Use this plan</button></div>' +
+			promptBox('plan', 'Ask ChatGPT to draft a plan', pwPlanPrompt(level), P.copied) +
+			'<div class="st-actions" style="margin-top:20px"><button type="button" class="mwm-btn mwm-btn--primary" data-plan-save' + (P.planSaving ? ' disabled' : '') + '>' + (P.planSaving ? 'Saving…' : 'Save the plan') + '</button>' + (P.planSaved ? '<span class="st-saved">✓ Saved</span>' : '') + '</div></div>';
 	}
 	function viewPathways() {
 		var P = S.pw;
 		var html = '<a href="' + esc(B.site + 'studio/') + '" class="st-back" data-go="dash"><span aria-hidden="true">←</span>Back to your dashboard</a>';
-		if (!P.open) {
-			var list = S.content.filter(function (r) { return r.kind === 'Pathway'; });
+		if (!P.topic) {
+			var list = pwOverview(P.level);
 			return html + '<h1 class="st-h1 st-h1--after-back">Revision pathways</h1>' +
-				'<p class="st-intro">A pathway is the order students should revise topics in for a level — the site ticks them off as they go. One per level, or one per exam board if the order differs.</p>' +
-				'<button type="button" class="mwm-btn mwm-btn--primary" data-pw-new>Create a pathway</button>' +
-				'<div class="st-list st-list--20">' + (list.length ? list.map(function (r) {
-					return '<div class="st-list__row st-list__row--16"><div class="st-list__main"><div class="st-list__name">' + esc(r.title) + '</div><div class="st-list__sub">' + esc(r.meta) + '</div></div><button type="button" class="st-smallbtn" data-edit="' + r.id + '">Edit</button></div>';
-				}).join('') : '<div class="st-list__row"><span class="mwm-meta">No pathways yet — create the first one above.</span></div>') + '</div>';
+				'<p class="st-intro">There’s one pathway for every level and topic, built from your lessons: put each topic’s subtopics in the order to revise them and every lesson slots in under its subtopic as soon as it’s published. A subtopic with no lesson yet shows as “Coming soon”, so you can plan the whole list first and record it later.</p>' +
+				'<div class="st-label" style="margin-top:24px">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, P.level === l.slug, { pwlevel: l.slug }); }).join('') + '</div>' +
+				'<div class="st-list st-list--20">' + (list.length ? list.map(function (t) {
+					var flags = '';
+					if (t.unplaced) { flags += tag(t.unplaced + (t.unplaced === 1 ? ' subtopic needs placing' : ' subtopics need placing'), 'mwm-tag--warn mwm-tag--sm'); }
+					if (t.orphans) { flags += tag(t.orphans + (t.orphans === 1 ? ' lesson has no subtopic' : ' lessons have no subtopic'), 'mwm-tag--warn mwm-tag--sm'); }
+					var sub = t.total ? [t.total + (t.total === 1 ? ' subtopic' : ' subtopics'), t.with_lessons + ' with lessons', t.coming_soon ? t.coming_soon + ' coming soon' : ''].filter(Boolean).join(' · ') : 'Nothing here yet: open it and add the subtopics.';
+					return '<div class="st-list__row st-list__row--16"><div class="st-list__media"><span class="st-list__icon" aria-hidden="true">' + icon('route') + '</span></div><div class="st-list__main"><div class="st-list__name">' + esc(t.topic_name) + '</div><div class="st-list__sub">' + esc(sub) + '</div>' + (flags ? '<div class="st-list__flags">' + flags + '</div>' : '') + '</div>' +
+						'<a href="' + esc(t.url) + '" class="st-smallbtn st-smallbtn--quiet" target="_blank" rel="noopener">View</a><button type="button" class="st-smallbtn" data-pw-open="' + esc(t.topic) + '">' + (t.total ? 'Edit' : 'Set up') + '</button></div>';
+				}).join('') : '<div class="st-list__row"><span class="mwm-meta">No topics are set up for this level yet.</span></div>') + '</div>' +
+				pwPlanPanel(P.level);
 		}
-		html += '<h1 class="st-h1 st-h1--after-back">' + (P.id ? 'Edit a pathway' : 'Create a pathway') + '</h1>';
-		if (P.id) { html += '<div class="st-banner">You’re editing <strong>' + esc(P.editingTitle) + '</strong> — change what you need, then publish again.</div>'; }
-		if (P.published) {
-			return html + '<div class="st-success"><span class="st-success__icon">' + icon('tick') + '</span><h2>It’s live!</h2><p>' + esc(P.published.summary) + '</p>' +
-				'<div class="st-success__actions"><a href="' + esc(P.published.url) + '" class="mwm-btn mwm-btn--primary">See the pathway</a><button type="button" class="mwm-btn mwm-btn--secondary" data-pw-list>Back to pathways</button></div></div>';
+		html += '<button type="button" class="st-back" data-pw-list><span aria-hidden="true">←</span>All pathways</button>';
+		if (P.loading || !P.data) { return html + '<h1 class="st-h1 st-h1--after-back">Loading…</h1>'; }
+		var D = P.data;
+		html += '<h1 class="st-h1 st-h1--after-back">' + esc(D.topic_name) + ' <span class="st-h1__muted">· ' + esc(D.level_name) + '</span></h1>' +
+			'<p class="st-intro">Students see these subtopics in this order, each with its lessons underneath. Use the arrows to reorder, add a tip for students where it helps (what to be comfortable with first), and publish. <a href="' + esc(D.url) + '" target="_blank" rel="noopener">See it on the site</a>.</p>';
+		html += '<div class="st-panel"><h2>1 · Subtopics, in the order to revise them</h2>';
+		if (!P.rows.length) { html += '<p class="st-note st-note--8">Nothing here yet. Add subtopics below, or paste a list.</p>'; }
+		html += P.rows.map(function (r, i) {
+			var tools = (r.placed ? '' : '<button type="button" class="st-smallbtn st-pw-place" data-pw-place="' + i + '" title="It’s in the right spot">✓ Place here</button>') +
+				'<button type="button" class="st-iconbtn" aria-label="Move up" data-pw-move="up" data-i="' + i + '"' + (i === 0 ? ' disabled' : '') + '>↑</button><button type="button" class="st-iconbtn" aria-label="Move down" data-pw-move="down" data-i="' + i + '"' + (i === P.rows.length - 1 ? ' disabled' : '') + '>↓</button>' +
+				'<button type="button" class="st-iconbtn st-iconbtn--danger" aria-label="Remove from this pathway" title="' + (r.lessons.length ? 'Take it out of this pathway. Its lessons stay on Learn Maths and you can put it back below.' : 'Take it out of this pathway (the subtopic itself stays)') + '" data-pw-remove="' + i + '">✕</button>';
+			return '<div class="st-pw-row' + (r.placed ? '' : ' is-unplaced') + (r.subtopic ? '' : ' is-new') + '"><span class="st-pw-row__step">' + (i + 1 < 10 ? '0' + (i + 1) : i + 1) + '</span>' +
+				'<div class="st-pw-row__main"><div class="st-pw-row__name">' + esc(r.name) + (r.placed ? '' : ' ' + tag('Needs placing', 'mwm-tag--warn mwm-tag--sm')) + (r.subtopic ? '' : ' ' + tag('New', 'mwm-tag--outline mwm-tag--sm')) + '</div>' +
+				'<div class="st-pw-row__lessons' + (r.lessons.length ? '' : ' is-soon') + '">' + esc(pwLessonLine(r)) + '</div>' +
+				'<label class="st-pw-row__tip"><span class="st-pw-row__tiplabel">Tip for students <span>(optional)</span></span><input type="text" class="st-input st-input--sm st-pw-row__note" value="' + esc(r.note) + '" placeholder="e.g. Do fractions first" data-pw-note="' + i + '"><span class="st-pw-row__tiphint">Shows in grey under the subtopic on the Revision page.</span></label></div>' +
+				'<div class="st-pw-row__tools">' + tools + '</div></div>';
+		}).join('');
+		if (P.rows.some(function (r) { return !r.placed; })) { html += '<p class="st-note st-note--12">“Needs placing” subtopics have lessons but no position yet, so students see them at the end. Move each one to where it belongs, or press “Place here” if it’s already right, then publish.</p>'; }
+		html += '</div>';
+		if (P.hidden && P.hidden.length) {
+			html += '<div class="st-panel"><h2>Hidden from this pathway</h2><p class="st-panel__sub">These have lessons at this level but you’ve taken them out of the ' + esc(D.level_name) + ' ' + esc(D.topic_name) + ' pathway. The lessons still show on Learn Maths.</p><div class="st-list st-list--12">' +
+				P.hidden.map(function (h, i) { return '<div class="st-list__row"><div class="st-list__main"><div class="st-list__name">' + esc(h.name) + '</div><div class="st-list__sub">' + esc(h.lessons.map(function (l) { return l.title; }).join(' · ')) + '</div></div><button type="button" class="st-smallbtn" data-pw-unhide="' + i + '">Put back</button></div>'; }).join('') + '</div></div>';
 		}
-		var step = 0;
-		html += '<div class="st-panel"><h2>1 · Who is it for?</h2>' +
-			'<div class="st-label" style="margin-top:12px">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, P.level === l.slug, { pwlevel: l.slug }); }).join('') + '</div>' +
-			'<div class="st-label st-label--24">Exam boards <span style="font-weight:400;color:var(--muted)">(leave all off if the order is the same for every board)</span></div><div class="st-chips">' + Object.keys(B.boards).map(function (b) { return chip(B.boards[b], P.boards.indexOf(b) > -1, { pwboard: b }); }).join('') + '</div>' +
-			'<div class="st-label st-label--24">Name <span style="font-weight:400;color:var(--muted)">(optional — students don’t see this)</span></div><div class="st-inputrow" style="margin-top:8px"><input type="text" class="st-input" value="' + esc(P.title) + '" placeholder="e.g. GCSE Higher revision pathway" aria-label="Pathway name" data-pw="title"></div></div>';
-		html += '<div class="st-panel"><h2>2 · Topics, in the order to revise them</h2><p class="st-panel__sub">Put topics into groups (“Number”, “Algebra”…). Each topic can link to a lesson so students get the video, worksheet and quiz in one tap. Tick “Coming soon” for a topic you haven’t recorded yet.</p>';
-		P.groups.forEach(function (g, gi) {
-			html += '<div class="st-pw-group"><div class="st-pw-group__head"><input type="text" class="st-input st-pw-group__name" value="' + esc(g.name) + '" placeholder="Group name, e.g. Algebra" aria-label="Group name" data-pw-gname="' + gi + '">' +
-				'<div class="st-pw-row__tools"><button type="button" class="st-iconbtn" aria-label="Move group up" data-pw-gmove="up" data-g="' + gi + '">↑</button><button type="button" class="st-iconbtn" aria-label="Move group down" data-pw-gmove="down" data-g="' + gi + '">↓</button><button type="button" class="st-iconbtn st-iconbtn--danger" aria-label="Remove group" data-pw-delgroup="' + gi + '">✕</button></div></div>';
-			g.rows.forEach(function (row, ri) { step++; html += pwRow(gi, ri, row, step); });
-			html += '<button type="button" class="mwm-linkbtn mwm-linkbtn--sm st-pw-add" data-pw-addrow="' + gi + '">+ Add a topic</button></div>';
-		});
-		html += '<button type="button" class="mwm-btn mwm-btn--secondary mwm-btn--sm" style="margin-top:16px" data-pw-addgroup>+ Add a group</button>' +
-			'<label class="st-check" style="margin-top:20px"><input type="checkbox"' + (P.complete ? ' checked' : '') + ' data-pw="complete">The topic list is complete (untick while you’re still adding topics — the site says “more being added”)</label></div>';
-		html += '<div class="st-panel"><h2>3 · Suggested revision plan <span style="font-weight:400;color:var(--muted)">(optional)</span></h2><p class="st-panel__sub">A week-by-week focus shown next to the pathway. Skip it if you’d rather not.</p>' +
-			(P.plan.length ? '<div class="st-pw-plan">' + P.plan.map(function (w, i) {
-				return '<div class="st-pw-plan__row"><label class="st-field">Week commencing<input type="date" class="st-date" value="' + esc(w.week) + '" data-pw-plan="week" data-i="' + i + '"></label>' +
-					'<label class="st-field st-field--grow">Focus<input type="text" class="st-input st-input--sm" value="' + esc(w.focus) + '" placeholder="e.g. Number & ratio" data-pw-plan="focus" data-i="' + i + '"></label>' +
-					'<label class="st-field">Calendar label<input type="text" class="st-input st-input--sm" value="' + esc(w.short) + '" placeholder="e.g. Number" data-pw-plan="short" data-i="' + i + '"></label>' +
-					'<button type="button" class="st-iconbtn st-iconbtn--danger" aria-label="Remove week" data-pw-delplan="' + i + '">✕</button></div>';
-			}).join('') + '</div>' : '') +
-			'<button type="button" class="mwm-linkbtn mwm-linkbtn--sm st-pw-add" data-pw-addplan>+ Add a week</button></div>';
+		if (P.orphans.length) {
+			html += '<div class="st-panel"><h2>Lessons with no subtopic</h2><p class="st-panel__sub">These sit at the end of the pathway until they have a subtopic. Open each lesson and pick one.</p><div class="st-list st-list--12">' +
+				P.orphans.map(function (l) { return '<div class="st-list__row"><span class="st-list__name">' + esc(l.title) + '</span><button type="button" class="st-smallbtn" data-edit="' + l.id + '">Edit lesson</button></div>'; }).join('') + '</div></div>';
+		}
+		var spare = P.subtopics.filter(function (st) { return !P.rows.some(function (r) { return r.subtopic === st.id || r.name.toLowerCase() === st.name.toLowerCase(); }); });
+		html += '<div class="st-panel"><h2>2 · Add subtopics</h2>' +
+			'<div class="st-inputrow"><input type="text" class="st-input" value="' + esc(P.add) + '" placeholder="e.g. Solving quadratics by factorising" aria-label="New subtopic" data-pw-add-input><button type="button" class="mwm-btn mwm-btn--secondary" data-pw-add' + (P.add.trim() ? '' : ' disabled') + '>Add</button></div>' +
+			(spare.length ? '<div class="st-label st-label--16">Already on the site but not in this pathway</div><div class="st-chips st-chips--12">' + spare.map(function (st) { return chip(st.name, false, { 'pw-pick': st.id }); }).join('') + '</div>' : '') + '</div>';
+		html += '<div class="st-panel"><h2>3 · Paste a list <span style="font-weight:400;color:var(--muted)">(from ChatGPT, or anywhere)</span></h2>' +
+			'<p class="st-panel__sub">Need a list? Copy one of these prompts into ChatGPT. Each already includes your current subtopics and asks for a reply in the right format: one subtopic per line, in order, with an optional tip for students after a vertical bar.</p>' +
+			pwPrompts().map(function (pr) { return promptBox(pr.key, pr.title, pr.text, P.copied, pr.then); }).join('') +
+			'<div class="st-label st-label--24" id="st-pw-paste-label">Paste the reply here</div><p class="st-panel__sub" style="margin-top:4px">Or type your own list: one subtopic per line, e.g. <code>Solving quadratics | needs: factorising</code>. Names that already exist are matched; new ones are created when you publish.</p>' +
+			'<textarea class="st-textarea st-textarea--paste" rows="8" aria-labelledby="st-pw-paste-label" placeholder="Expanding brackets&#10;Factorising&#10;Solving linear equations | needs: collecting like terms" data-pw-paste>' + esc(P.paste) + '</textarea>' +
+			'<div class="st-actions"><button type="button" class="mwm-btn mwm-btn--primary mwm-btn--sm" data-pw-paste-apply="replace"' + (P.paste.trim() ? '' : ' disabled') + '>Use this order</button><button type="button" class="mwm-btn mwm-btn--secondary mwm-btn--sm" data-pw-paste-apply="append"' + (P.paste.trim() ? '' : ' disabled') + '>Add to the end</button></div>' +
+			'<p class="st-note st-note--8">“Use this order” rebuilds section 1 in the order you pasted (anything with lessons that you left out drops to the end as “needs placing”). “Add to the end” keeps what’s there and adds the new ones after it. Either way, nothing is saved until you publish.</p></div>';
 		html += '<div class="st-panel"><h2>4 · Publish</h2>' +
-			'<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish st-publish--12" data-publish-pw' + (P.publishing ? ' disabled' : '') + '>' + (P.publishing ? 'Publishing…' : (P.id ? 'Publish changes' : 'Publish this pathway')) + '</button>' +
-			(P.error ? '<p class="st-error">' + esc(P.error) + '</p>' : '') +
-			'<p class="st-note st-note--12">It goes live straight away on the Revision page for this level.</p></div>';
+			'<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish st-publish--12" data-publish-pw' + (P.saving ? ' disabled' : '') + '>' + (P.saving ? 'Publishing…' : 'Publish this order') + '</button>' +
+			(P.error ? '<p class="st-error">' + esc(P.error) + '</p>' : '') + (P.saved ? '<p class="st-note st-note--12 st-saved">✓ ' + esc(P.saved) + '</p>' : '') +
+			'<p class="st-note st-note--12">It goes live straight away on the Revision page. Lessons you add later appear under their subtopic by themselves.</p></div>';
 		return html;
-	}
-	function pwLessonSearch(box, q, g, r) {
-		var list = box.querySelector('[data-pw-lesson-list]');
-		var mine = ++wsSearchSeq;
-		q = q.trim();
-		if (!q) { list.setAttribute('hidden', ''); box.classList.remove('is-open'); return; }
-		list.innerHTML = '<div class="st-picker__empty">Searching…</div>'; list.removeAttribute('hidden'); box.classList.add('is-open');
-		// Searches every level (many imported lessons still need their level checking); the hint shows each lesson's level.
-		api('lessons?per_page=8&format=lesson&search=' + encodeURIComponent(q)).then(function (res) {
-			if (mine !== wsSearchSeq) { return; }
-			var items = res.items || [];
-			list.innerHTML = items.length
-				? items.map(function (l) { return '<button type="button" class="st-picker__opt" role="option" data-pw-pick="' + l.id + '" data-g="' + g + '" data-r="' + r + '" data-pw-title="' + esc(l.title) + '">' + esc(l.title) + '<span class="st-picker__hint">' + esc([l.level, l.subtopic || l.topic].filter(Boolean).join(' · ')) + '</span></button>'; }).join('')
-				: '<div class="st-picker__empty">No lessons match “' + esc(q) + '”.</div>';
-		}).catch(function () { list.innerHTML = '<div class="st-picker__empty">Couldn’t search just now — try again.</div>'; });
-	}
-	function pwSave() {
-		var P = S.pw;
-		P.publishing = true; P.error = ''; render();
-		var body = { id: P.id, title: P.title, level: P.level, boards: P.boards, complete: P.complete,
-			groups: P.groups.map(function (g) { return { name: g.name, rows: g.rows.map(function (r) { return { topic: r.topic, lesson: r.lesson, note: r.note, coming_soon: r.coming_soon }; }) }; }),
-			plan: P.plan };
-		api('studio/pathways', { method: 'POST', body: body }).then(function (d) {
-			P.publishing = false; P.id = d.id;
-			P.published = { summary: d.level_name + ' · ' + d.total + (d.total === 1 ? ' topic' : ' topics') + (d.boards.length ? ' · ' + d.boards.map(function (b) { return B.boards[b] || b; }).join(', ') : ' · all boards') + (d.plan.length ? ' · ' + d.plan.length + '-week plan' : ''), url: B.urls.revision.replace(/\/$/, '') + '/' + d.level + '/' + (d.boards[0] ? d.boards[0] + '/' : '') };
-			refreshContent(); render();
-		}).catch(function (err) { P.publishing = false; P.error = err.message; render(); });
 	}
 
 	/* Home page picks: hero lesson (+ short title) and the featured grid. */
@@ -1052,24 +1135,16 @@
 		}).catch(function (e) { L.publishing = false; L.publishError = e.message; render(); });
 	}
 	function refreshContent() {
-		api('studio/content').then(function (rows) { S.content = rows; S.recent = rows.slice(0, 3); S.dates = rows.filter(function (r) { return r.kind === 'Exam date'; }); if (S.view === 'content' || S.view === 'dash' || S.view === 'dates' || (S.view === 'pathways' && !S.pw.open)) { render(); } }).catch(function () {});
+		api('studio/content').then(function (rows) { S.content = rows; S.recent = rows.slice(0, 3); S.dates = rows.filter(function (r) { return r.kind === 'Exam date'; }); if (S.view === 'content' || S.view === 'dash' || S.view === 'dates') { render(); } }).catch(function () {});
+		refreshPathways();
+	}
+	/* Pathway overviews change whenever a lesson or subtopic does; cheap to re-fetch (they're cached server-side). */
+	function refreshPathways() {
+		api('studio/pathways').then(function (d) { S.pathways = d.levels || {}; S.pw.plans = d.plans || {}; if (S.view === 'dash' || (S.view === 'pathways' && !S.pw.topic)) { render(); } }).catch(function () {});
 	}
 	function editItem(id) {
 		var it = S.content.filter(function (r) { return r.id === id; })[0];
 		if (!it) { return; }
-		if (it.kind === 'Pathway') {
-			root.classList.add('st-busy');
-			api('studio/pathways/' + it.id).then(function (d) {
-				root.classList.remove('st-busy');
-				var PWD = freshPathway();
-				PWD.id = d.id; PWD.open = true; PWD.editingTitle = d.title; PWD.title = d.title; PWD.level = d.level || 'gcse-higher'; PWD.boards = d.boards || []; PWD.complete = !!d.complete;
-				PWD.groups = (d.groups || []).map(function (g) { return { name: g.name, rows: g.rows.map(function (r) { return { topic: r.topic, lesson: r.lesson_id || 0, lesson_title: r.lesson_title || '', note: r.note || '', coming_soon: !!r.coming_soon }; }) }; });
-				if (!PWD.groups.length) { PWD.groups = freshPathway().groups; }
-				PWD.plan = (d.plan || []).map(function (w) { return { week: w.week, focus: w.focus, short: w.short }; });
-				S.pw = PWD; go('pathways');
-			}).catch(function (err) { root.classList.remove('st-busy'); toast(err.message); });
-			return;
-		}
 		if (it.kind === 'Worksheet' && !it.lesson_id) {
 			root.classList.add('st-busy');
 			api('studio/worksheets/' + it.id).then(function (w) {
@@ -1115,6 +1190,9 @@
 	}
 
 	/* ---------------------------------------------------------------- events */
+	root.addEventListener('keydown', function (e) {
+		if (e.key === 'Enter' && e.target.matches('[data-pw-add-input]')) { e.preventDefault(); var ab = root.querySelector('[data-pw-add]'); if (ab && !ab.disabled) { ab.click(); } }
+	});
 	root.addEventListener('submit', function (e) {
 		var f = e.target.closest('[data-find-form]');
 		if (f) { e.preventDefault(); var v = f.querySelector('[data-yt]').value.trim(); if (v) { findVideo(v); } }
@@ -1130,8 +1208,6 @@
 	root.addEventListener('focusout', function (e) {
 		var lpbox = e.target.closest && e.target.closest('[data-lpick-box]');
 		if (lpbox && !(e.relatedTarget && lpbox.contains(e.relatedTarget))) { lpbox.querySelector('[data-lpick-list]').setAttribute('hidden', ''); lpbox.classList.remove('is-open'); return; }
-		var lbox = e.target.closest && e.target.closest('[data-pw-lesson-box]');
-		if (lbox && !(e.relatedTarget && lbox.contains(e.relatedTarget))) { lbox.querySelector('[data-pw-lesson-list]').setAttribute('hidden', ''); lbox.classList.remove('is-open'); return; }
 		var wbox = e.target.closest && e.target.closest('[data-ppws]');
 		if (wbox && !(e.relatedTarget && wbox.contains(e.relatedTarget))) { wbox.querySelector('[data-ppws-list]').setAttribute('hidden', ''); wbox.classList.remove('is-open'); return; }
 		var box = e.target.closest && e.target.closest('[data-picker]');
@@ -1196,15 +1272,11 @@
 		if (e.target.matches('[data-quiz-text]')) { S.lesson.quizText = e.target.value; S.lesson.quizResult = null; }
 		if (e.target.matches('[data-ed="date"]')) { S.ed.date = e.target.value; S.ed.error = ''; render(); }
 		// Pathway editor: text inputs update state without re-rendering, so typing keeps focus.
-		if (e.target.matches('[data-pw="title"]')) { S.pw.title = e.target.value; }
-		if (e.target.matches('[data-pw-gname]')) { S.pw.groups[Number(e.target.getAttribute('data-pw-gname'))].name = e.target.value; }
-		if (e.target.matches('[data-pw-row="topic"], [data-pw-row="note"]')) { S.pw.groups[Number(e.target.getAttribute('data-g'))].rows[Number(e.target.getAttribute('data-r'))][e.target.getAttribute('data-pw-row')] = e.target.value; }
-		if (e.target.matches('[data-pw-plan]')) { S.pw.plan[Number(e.target.getAttribute('data-i'))][e.target.getAttribute('data-pw-plan')] = e.target.value; }
-		if (e.target.matches('[data-pw-lesson-input]')) {
-			var lb = e.target.closest('[data-pw-lesson-box]'), lq = e.target.value, lg = e.target.getAttribute('data-g'), lr = e.target.getAttribute('data-r');
-			clearTimeout(wsSearchTimer); wsSearchTimer = setTimeout(function () { pwLessonSearch(lb, lq, lg, lr); }, 250);
-		}
-		if (e.target.matches('[data-pr-name]')) { S.pr.name = e.target.value; S.pr.error = ''; }
+		if (e.target.matches('[data-pw-note]')) { S.pw.rows[Number(e.target.getAttribute('data-pw-note'))].note = e.target.value; S.pw.saved = ''; }
+		if (e.target.matches('[data-pw-add-input]')) { S.pw.add = e.target.value; var ab = root.querySelector('[data-pw-add]'); if (ab) { ab.disabled = !e.target.value.trim(); } }
+		if (e.target.matches('[data-pw-paste]')) { S.pw.paste = e.target.value; root.querySelectorAll('[data-pw-paste-apply]').forEach(function (b) { b.disabled = !e.target.value.trim(); }); }
+		if (e.target.matches('[data-plan]')) { (S.pw.plans[S.pw.level] || [])[Number(e.target.getAttribute('data-i'))][e.target.getAttribute('data-plan')] = e.target.value; S.pw.planSaved = false; }
+		if (e.target.matches('[data-plan-paste]')) { S.pw.planPaste = e.target.value; var pb = root.querySelector('[data-plan-paste-apply]'); if (pb) { pb.disabled = !e.target.value.trim(); } }
 		if (e.target.matches('[data-ws-title]')) { S.ws.title = e.target.value; S.ws.error = ''; var t = root.querySelector('.st-preview__title'); if (t) { t.textContent = S.ws.title || 'Untitled worksheet'; } }
 		if (e.target.matches('[data-ws-desc]')) { S.ws.desc = e.target.value; }
 	});
@@ -1236,8 +1308,6 @@
 		else if (el.matches('[data-pr-calc]')) { S.pr.calculator = el.checked; }
 		else if (el.matches('[data-ed="paper"]')) { S.ed.paper = el.value; }
 		else if (el.matches('[data-ed="checked"]')) { S.ed.checked = el.checked; S.ed.error = ''; render(); }
-		else if (el.matches('[data-pw="complete"]')) { S.pw.complete = el.checked; }
-		else if (el.matches('[data-pw-row="coming_soon"]')) { S.pw.groups[Number(el.getAttribute('data-g'))].rows[Number(el.getAttribute('data-r'))].coming_soon = el.checked; }
 	});
 	root.addEventListener('click', function (e) {
 		var el, L = S.lesson, P = S.pp, E = S.ed;
@@ -1395,21 +1465,66 @@
 		}
 		// Revision pathways
 		var PW = S.pw;
-		if ((el = e.target.closest('[data-pw-new]'))) { S.pw = freshPathway(); S.pw.open = true; render(); return; }
-		if ((el = e.target.closest('[data-pw-list]'))) { S.pw = freshPathway(); render(); return; }
-		if ((el = e.target.closest('[data-pwlevel]'))) { PW.level = el.getAttribute('data-pwlevel'); render(); return; }
-		if ((el = e.target.closest('[data-pwboard]'))) { var pb = el.getAttribute('data-pwboard'); PW.boards = PW.boards.indexOf(pb) > -1 ? PW.boards.filter(function (b) { return b !== pb; }) : PW.boards.concat([pb]); render(); return; }
-		if ((el = e.target.closest('[data-pw-addgroup]'))) { PW.groups.push({ name: '', rows: [{ topic: '', lesson: 0, lesson_title: '', note: '', coming_soon: false }] }); render(); return; }
-		if ((el = e.target.closest('[data-pw-delgroup]'))) { PW.groups.splice(Number(el.getAttribute('data-pw-delgroup')), 1); render(); return; }
-		if ((el = e.target.closest('[data-pw-gmove]'))) { var gi = Number(el.getAttribute('data-g')), gj = gi + (el.getAttribute('data-pw-gmove') === 'up' ? -1 : 1); if (PW.groups[gj]) { var tmpG = PW.groups[gi]; PW.groups[gi] = PW.groups[gj]; PW.groups[gj] = tmpG; render(); } return; }
-		if ((el = e.target.closest('[data-pw-addrow]'))) { PW.groups[Number(el.getAttribute('data-pw-addrow'))].rows.push({ topic: '', lesson: 0, lesson_title: '', note: '', coming_soon: false }); render(); return; }
-		if ((el = e.target.closest('[data-pw-delrow]'))) { PW.groups[Number(el.getAttribute('data-g'))].rows.splice(Number(el.getAttribute('data-r')), 1); render(); return; }
-		if ((el = e.target.closest('[data-pw-move]'))) { var rows = PW.groups[Number(el.getAttribute('data-g'))].rows, ri = Number(el.getAttribute('data-r')), rj = ri + (el.getAttribute('data-pw-move') === 'up' ? -1 : 1); if (rows[rj]) { var tmpR = rows[ri]; rows[ri] = rows[rj]; rows[rj] = tmpR; render(); } return; }
-		if ((el = e.target.closest('[data-pw-pick]'))) { var prow = PW.groups[Number(el.getAttribute('data-g'))].rows[Number(el.getAttribute('data-r'))]; prow.lesson = Number(el.getAttribute('data-pw-pick')); prow.lesson_title = el.getAttribute('data-pw-title'); if (!prow.topic) { prow.topic = prow.lesson_title; } render(); return; }
-		if ((el = e.target.closest('[data-pw-unlesson]'))) { var urow = PW.groups[Number(el.getAttribute('data-g'))].rows[Number(el.getAttribute('data-r'))]; urow.lesson = 0; urow.lesson_title = ''; render(); return; }
-		if ((el = e.target.closest('[data-pw-addplan]'))) { var last = PW.plan[PW.plan.length - 1]; var next = ''; if (last && last.week) { var dt = new Date(last.week); dt.setDate(dt.getDate() + 7); next = dt.toISOString().slice(0, 10); } PW.plan.push({ week: next, focus: '', short: '' }); render(); return; }
-		if ((el = e.target.closest('[data-pw-delplan]'))) { PW.plan.splice(Number(el.getAttribute('data-pw-delplan')), 1); render(); return; }
+		if ((el = e.target.closest('[data-pwlevel]'))) { PW.level = el.getAttribute('data-pwlevel'); PW.topic = ''; PW.data = null; PW.planSaved = false; PW.copied = ''; render(); return; }
+		if ((el = e.target.closest('[data-pw-open]'))) { pwOpen(PW.level, el.getAttribute('data-pw-open')); return; }
+		if ((el = e.target.closest('[data-pw-list]'))) { PW.topic = ''; PW.data = null; PW.copied = ''; render(); window.scrollTo(0, 0); return; }
+		if ((el = e.target.closest('[data-pw-move]'))) {
+			var mi = Number(el.getAttribute('data-i')), mj = mi + (el.getAttribute('data-pw-move') === 'up' ? -1 : 1);
+			if (PW.rows[mj]) { var tmp = PW.rows[mi]; PW.rows[mi] = PW.rows[mj]; PW.rows[mj] = tmp; tmp.placed = true; PW.saved = ''; render(); }
+			return;
+		}
+		if ((el = e.target.closest('[data-pw-place]'))) { PW.rows[Number(el.getAttribute('data-pw-place'))].placed = true; PW.saved = ''; render(); return; }
+		if ((el = e.target.closest('[data-pw-remove]'))) {
+			var gone = PW.rows.splice(Number(el.getAttribute('data-pw-remove')), 1)[0];
+			if (gone && gone.lessons.length && gone.subtopic) { PW.hidden = (PW.hidden || []).concat([{ subtopic: gone.subtopic, name: gone.name, lessons: gone.lessons }]); toast('Taken out. Its lessons stay on Learn Maths; put it back any time.'); }
+			PW.saved = ''; render(); return;
+		}
+		if ((el = e.target.closest('[data-pw-unhide]'))) {
+			var back = PW.hidden.splice(Number(el.getAttribute('data-pw-unhide')), 1)[0];
+			if (back) { PW.rows.push({ subtopic: back.subtopic, name: back.name, note: '', lessons: back.lessons, placed: false }); }
+			PW.saved = ''; render(); return;
+		}
+		if ((el = e.target.closest('[data-pw-add]'))) { if (pwAddRow(PW.add, '', 0)) { PW.add = ''; PW.saved = ''; } else { toast('That subtopic is already in the list.'); } render(); var ai = root.querySelector('[data-pw-add-input]'); if (ai) { ai.focus(); } return; }
+		if ((el = e.target.closest('[data-pw-pick]'))) { var pk = Number(el.getAttribute('data-pw-pick')), pst = PW.subtopics.filter(function (s) { return s.id === pk; })[0]; if (pst) { pwAddRow(pst.name, '', pst.id); PW.saved = ''; render(); } return; }
+		if ((el = e.target.closest('[data-pw-paste-apply]'))) {
+			var lines = pwParse(PW.paste);
+			if (!lines.length) { return; }
+			if (el.getAttribute('data-pw-paste-apply') === 'replace') {
+				// Pasted order first; anything with lessons that wasn't mentioned keeps its lessons and drops to the end, flagged.
+				var kept = PW.rows.filter(function (r) { return r.lessons.length; }).map(function (r) { r.placed = false; return r; });
+				PW.rows = [];
+				lines.forEach(function (ln) {
+					var had = kept.filter(function (r) { return r.name.toLowerCase() === ln.name.toLowerCase(); })[0];
+					if (had) { had.placed = true; if (ln.note) { had.note = ln.note; } PW.rows.push(had); kept = kept.filter(function (r) { return r !== had; }); }
+					else { pwAddRow(ln.name, ln.note, 0); }
+				});
+				PW.rows = PW.rows.concat(kept);
+			} else {
+				lines.forEach(function (ln) { pwAddRow(ln.name, ln.note, 0); });
+			}
+			PW.paste = ''; PW.saved = ''; render(); return;
+		}
+		if ((el = e.target.closest('[data-pw-copy]'))) {
+			var ck = el.getAttribute('data-pw-copy'), ctext = ck === 'plan' ? pwPlanPrompt(PW.level) : (pwPrompts().filter(function (pr) { return pr.key === ck; })[0] || {}).text;
+			try { navigator.clipboard.writeText(ctext || ''); } catch (err) {}
+			PW.copied = ck; toast('Copied. Paste it into ChatGPT.'); render(); return;
+		}
 		if ((el = e.target.closest('[data-publish-pw]'))) { pwSave(); return; }
+		if ((el = e.target.closest('[data-plan-add]'))) {
+			var plist = PW.plans[PW.level] = PW.plans[PW.level] || [], plast = plist[plist.length - 1], pnext = '';
+			if (plast && plast.week) { var pdt = new Date(plast.week); pdt.setDate(pdt.getDate() + 7); pnext = pdt.toISOString().slice(0, 10); }
+			plist.push({ week: pnext, focus: '', short: '' }); PW.planSaved = false; render(); return;
+		}
+		if ((el = e.target.closest('[data-plan-del]'))) { (PW.plans[PW.level] || []).splice(Number(el.getAttribute('data-plan-del')), 1); PW.planSaved = false; render(); return; }
+		if ((el = e.target.closest('[data-plan-paste-apply]'))) {
+			var prows = String(PW.planPaste || '').split(/\r?\n/).map(function (line) {
+				var parts = line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').split('|').map(function (x) { return x.trim(); });
+				return parts[0] && parts[1] ? { week: parts[0], focus: parts[1], short: parts[2] || '' } : null;
+			}).filter(Boolean);
+			if (!prows.length) { toast('No weeks found. Each line needs a date, a bar and a focus.'); return; }
+			PW.plans[PW.level] = prows; PW.planPaste = ''; PW.planSaved = false; render(); return;
+		}
+		if ((el = e.target.closest('[data-plan-save]'))) { pwPlanSave(); return; }
 		if ((el = e.target.closest('[data-ppboard]'))) { P.board = el.getAttribute('data-ppboard'); render(); return; }
 		if ((el = e.target.closest('[data-pp-unlink]'))) { var uid = Number(el.getAttribute('data-pp-unlink')); P.worksheets = P.worksheets.filter(function (w) { return w.id !== uid; }); render(); return; }
 		if ((el = e.target.closest('[data-pp-unpdf]'))) { P.wsPdfs.splice(Number(el.getAttribute('data-pp-unpdf')), 1); render(); return; }

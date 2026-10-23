@@ -1,6 +1,6 @@
 <?php
 /**
- * Pretty URLs: /learn-maths/{level}/{topic}/, /revision/{level}/{board}/, /studio/{view}/.
+ * Pretty URLs: /learn-maths/{level}/{topic}/, /revision/{level}/{topic}/, /studio/{view}/.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -11,6 +11,7 @@ class MWM_Rewrites {
 		add_action( 'init', [ __CLASS__, 'add_rules' ], 20 );
 		add_filter( 'query_vars', [ __CLASS__, 'query_vars' ] );
 		add_filter( 'redirect_canonical', [ __CLASS__, 'no_canonical_on_custom' ], 10, 2 );
+		add_action( 'template_redirect', [ __CLASS__, 'redirect_old_pathway_urls' ] );
 	}
 
 	public static function query_vars( array $vars ): array {
@@ -26,7 +27,9 @@ class MWM_Rewrites {
 
 		add_rewrite_rule( "^{$browse}/({$levels})/?$", "index.php?pagename={$browse}&mwm_level=\$matches[1]", 'top' );
 		add_rewrite_rule( "^{$browse}/({$levels})/([^/]+)/?$", "index.php?pagename={$browse}&mwm_level=\$matches[1]&mwm_topic=\$matches[2]", 'top' );
+		// Old /revision/{level}/{board}/ links still resolve; pathway_state() sends them on to /revision/{level}/.
 		add_rewrite_rule( "^{$rev}/({$levels})/({$boards})/?$", "index.php?pagename={$rev}&mwm_level=\$matches[1]&mwm_board=\$matches[2]", 'top' );
+		add_rewrite_rule( "^{$rev}/({$levels})/([^/]+)/?$", "index.php?pagename={$rev}&mwm_level=\$matches[1]&mwm_topic=\$matches[2]", 'top' );
 		add_rewrite_rule( "^{$rev}/({$levels})/?$", "index.php?pagename={$rev}&mwm_level=\$matches[1]", 'top' );
 		add_rewrite_rule( '^studio/?$', 'index.php?mwm_studio=1', 'top' );
 		add_rewrite_rule( '^studio/([a-z-]+)/?$', 'index.php?mwm_studio=1&mwm_studio_view=$matches[1]', 'top' );
@@ -65,16 +68,31 @@ class MWM_Rewrites {
 		];
 	}
 
+	/**
+	 * Revision page state: level and (optional) topic from the URL, board from the visitor's preference
+	 * (the exam panel still needs one). An old /revision/{level}/{board}/ link is sent to /revision/{level}/.
+	 */
 	public static function pathway_state(): array {
 		$prefs  = mwm_user_prefs();
 		$level  = sanitize_key( (string) ( get_query_var( 'mwm_level' ) ?: ( $_GET['level'] ?? '' ) ) );
-		$board  = sanitize_key( (string) ( get_query_var( 'mwm_board' ) ?: ( $_GET['board'] ?? '' ) ) );
+		$topic  = sanitize_title( (string) ( get_query_var( 'mwm_topic' ) ?: ( $_GET['topic'] ?? '' ) ) );
+		$board  = sanitize_key( (string) ( $_GET['board'] ?? '' ) );
 		if ( ! isset( mwm_levels()[ $level ] ) ) {
 			$level = $prefs['level'];
 		}
 		if ( ! isset( mwm_boards()[ $board ] ) ) {
 			$board = $prefs['board'];
 		}
-		return [ 'level' => $level, 'board' => $board ];
+		return [ 'level' => $level, 'topic' => $topic, 'board' => $board ];
+	}
+
+	public static function redirect_old_pathway_urls(): void {
+		$pages = (array) get_option( 'mwm_pages', [] );
+		if ( empty( $pages['revision'] ) || ! is_page( (int) $pages['revision'] ) || ! get_query_var( 'mwm_board' ) ) {
+			return;
+		}
+		$level = sanitize_key( (string) get_query_var( 'mwm_level' ) );
+		wp_safe_redirect( mwm_pathway_url( isset( mwm_levels()[ $level ] ) ? $level : mwm_user_prefs()['level'] ), 301 );
+		exit;
 	}
 }

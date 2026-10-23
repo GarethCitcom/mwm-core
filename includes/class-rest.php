@@ -2,7 +2,7 @@
 /**
  * REST API: mwm/v1
  *
- * Public:  GET lessons, topics, pathway, exam-dates, quiz/{id}
+ * Public:  GET lessons, topics, pathway (one level + topic, or a level's overview), exam-dates, quiz/{id}
  * Signed-in: GET|POST me/progress
  * Studio (capability mwm_manage_studio): video lookup, lessons, uploads, quiz validation, past papers, predicted papers, exam dates, content list, trash/restore, sync, site stats (via Site Kit)
  */
@@ -60,13 +60,16 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/worksheets', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_worksheet' ] ] ) );
 		register_rest_route( $ns, '/studio/worksheets/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_worksheet' ] ] ) );
 		register_rest_route( $ns, '/studio/subtopics', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_create_subtopic' ] ] ) );
-		register_rest_route( $ns, '/studio/pathways', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_pathway' ] ] ) );
+		register_rest_route( $ns, '/studio/pathways', [
+			array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_pathways' ] ] ),
+			array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_pathway' ] ] ),
+		] );
+		register_rest_route( $ns, '/studio/revision-plan', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_revision_plan' ] ] ) );
 		register_rest_route( $ns, '/studio/notifications', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_notifications' ] ] ) );
 		register_rest_route( $ns, '/studio/suggestions', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_suggestions' ] ] ) );
 		register_rest_route( $ns, '/studio/suggestions/scan', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_suggestions_scan' ] ] ) );
 		register_rest_route( $ns, '/studio/suggestions/ignore', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_suggestions_ignore' ] ] ) );
 		register_rest_route( $ns, '/studio/suggestions/add', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_suggestions_add' ] ] ) );
-		register_rest_route( $ns, '/studio/pathways/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_pathway' ] ] ) );
 		register_rest_route( $ns, '/studio/upload', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_upload' ] ] ) );
 		register_rest_route( $ns, '/studio/quiz/validate', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_validate_quiz' ] ] ) );
 		register_rest_route( $ns, '/studio/past-papers', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_past_paper' ] ] ) );
@@ -191,12 +194,17 @@ class MWM_REST {
 		return rest_ensure_response( $topics );
 	}
 
+	/**
+	 * GET /pathway?level=&topic=  One topic's pathway (rows with lessons), or with no topic the level's overview.
+	 */
 	public static function get_pathway( WP_REST_Request $r ): WP_REST_Response|WP_Error {
-		$level = sanitize_key( (string) $r->get_param( 'level' ) ) ?: 'gcse-higher';
+		$level = sanitize_key( (string) $r->get_param( 'level' ) );
+		$level = isset( mwm_levels()[ $level ] ) ? $level : 'gcse-higher';
+		$topic = sanitize_title( (string) $r->get_param( 'topic' ) );
 		$board = sanitize_key( (string) $r->get_param( 'board' ) ) ?: 'edexcel';
-		$p     = mwm_find_pathway( $level, $board );
 		return rest_ensure_response( [
-			'pathway'   => $p ? mwm_pathway_data( $p ) : null,
+			'pathway'   => $topic ? mwm_pathway( $level, $topic ) : null,
+			'topics'    => $topic ? null : mwm_pathway_overview( $level ),
 			'next_exam' => mwm_next_exam( $level, $board ),
 			'level'     => $level,
 			'board'     => $board,
@@ -342,94 +350,123 @@ class MWM_REST {
 	}
 
 	/**
-	 * A pathway for the Studio editor: structured data plus post status.
+	 * Every level's pathway overview (one line per topic) plus the revision plans: what the Studio boots with
+	 * and refreshes after a save.
 	 */
-	public static function studio_get_pathway( WP_REST_Request $r ): WP_REST_Response|WP_Error {
-		$id = (int) $r['id'];
-		if ( get_post_type( $id ) !== 'mwm_pathway' ) {
-			return new WP_Error( 'not_found', 'Pathway not found', [ 'status' => 404 ] );
+	public static function pathways_payload(): array {
+		$levels = [];
+		$plans  = [];
+		foreach ( array_keys( mwm_levels() ) as $level ) {
+			$levels[ $level ] = mwm_pathway_overview( $level );
+			$plans[ $level ]  = mwm_revision_plan( $level );
 		}
-		$d = mwm_pathway_data( $id );
-		$d['status'] = get_post_status( $id );
-		return rest_ensure_response( $d );
+		return [ 'levels' => $levels, 'plans' => $plans ];
 	}
 
 	/**
-	 * Create or update a revision pathway from the Studio: level, boards, ordered topic groups (each row optionally
-	 * linked to a lesson) and the suggested week-by-week plan.
+	 * GET /studio/pathways            → overviews + plans.
+	 * GET /studio/pathways?level&topic → that pathway's rows plus every subtopic of the topic (for the add box).
+	 */
+	public static function studio_pathways( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$level = sanitize_key( (string) $r->get_param( 'level' ) );
+		$topic = sanitize_title( (string) $r->get_param( 'topic' ) );
+		if ( ! $topic ) {
+			return rest_ensure_response( self::pathways_payload() );
+		}
+		$pw = mwm_pathway( $level, $topic );
+		if ( ! $pw ) {
+			return new WP_Error( 'not_found', 'That topic isn’t set up for this level.', [ 'status' => 404 ] );
+		}
+		return rest_ensure_response( [
+			'pathway'   => $pw,
+			'subtopics' => array_map( static fn( $st ) => [ 'id' => $st['id'], 'slug' => $st['slug'], 'name' => $st['name'] ], mwm_subtopics( $pw['topic_id'] ) ),
+		] );
+	}
+
+	/**
+	 * POST /studio/pathways { level, topic, rows: [ { subtopic: id, name: '', note: '' } ], hidden: [ id, ... ] }
+	 * Saves the order for one level + topic; `hidden` lists subtopics with lessons that stay out of this pathway. A row with no id but a name creates that subtopic (or reuses one
+	 * with the same name), so a list pasted from ChatGPT works in one go.
 	 */
 	public static function studio_save_pathway( WP_REST_Request $r ): WP_REST_Response|WP_Error {
-		$p        = (array) $r->get_json_params();
-		$id       = (int) ( $p['id'] ?? 0 );
-		$level    = sanitize_key( (string) ( $p['level'] ?? '' ) );
-		$boards   = array_values( array_intersect( array_map( 'sanitize_key', (array) ( $p['boards'] ?? [] ) ), array_keys( mwm_boards() ) ) );
-		$complete = ! empty( $p['complete'] );
-		$title    = sanitize_text_field( (string) ( $p['title'] ?? '' ) );
-		if ( $id && get_post_type( $id ) !== 'mwm_pathway' ) {
-			return new WP_Error( 'not_found', 'Pathway not found', [ 'status' => 404 ] );
-		}
+		$p     = (array) $r->get_json_params();
+		$level = sanitize_key( (string) ( $p['level'] ?? '' ) );
+		$topic = sanitize_title( (string) ( $p['topic'] ?? '' ) );
 		if ( ! isset( mwm_levels()[ $level ] ) ) {
 			return new WP_Error( 'missing_level', 'Pick the level this pathway is for.', [ 'status' => 400 ] );
 		}
-		$groups = [];
-		foreach ( (array) ( $p['groups'] ?? [] ) as $g ) {
-			$rows = [];
-			foreach ( (array) ( $g['rows'] ?? [] ) as $row ) {
-				$lesson = (int) ( $row['lesson'] ?? 0 );
-				if ( $lesson && get_post_type( $lesson ) !== 'mwm_lesson' ) {
-					$lesson = 0;
+		$parent = $topic ? get_term_by( 'slug', $topic, 'mwm_topic' ) : null;
+		if ( ! $parent || (int) $parent->parent !== 0 ) {
+			return new WP_Error( 'bad_topic', 'Pick a topic first.', [ 'status' => 400 ] );
+		}
+		$rows    = [];
+		$created = 0;
+		foreach ( (array) ( $p['rows'] ?? [] ) as $row ) {
+			$sid  = (int) ( $row['subtopic'] ?? 0 );
+			$name = trim( sanitize_text_field( (string) ( $row['name'] ?? '' ) ) );
+			if ( ! $sid && $name !== '' ) {
+				$sid = self::upsert_subtopic( $parent, $name, $created );
+				if ( is_wp_error( $sid ) ) {
+					return $sid;
 				}
-				$topic = sanitize_text_field( (string) ( $row['topic'] ?? '' ) );
-				if ( $topic === '' && ! $lesson ) {
-					continue; // An empty row.
-				}
-				$rows[] = [
-					'topic'       => $topic,
-					'lesson'      => $lesson ?: '',
-					'note'        => sanitize_text_field( (string) ( $row['note'] ?? '' ) ),
-					'coming_soon' => ! empty( $row['coming_soon'] ) ? 1 : 0,
-				];
 			}
-			$name = sanitize_text_field( (string) ( $g['name'] ?? '' ) );
-			if ( $name === '' && ! $rows ) {
+			if ( ! $sid ) {
 				continue;
 			}
-			$groups[] = [ 'name' => $name, 'rows' => $rows ];
-		}
-		if ( ! $groups ) {
-			return new WP_Error( 'missing_topics', 'Add at least one group with a topic in it.', [ 'status' => 400 ] );
-		}
-		$plan = [];
-		foreach ( (array) ( $p['plan'] ?? [] ) as $w ) {
-			$week  = sanitize_text_field( (string) ( $w['week'] ?? '' ) );
-			$focus = sanitize_text_field( (string) ( $w['focus'] ?? '' ) );
-			if ( ! $week || ! strtotime( $week ) || $focus === '' ) {
-				continue;
+			$term = get_term( $sid, 'mwm_topic' );
+			if ( ! $term || is_wp_error( $term ) || (int) $term->parent !== (int) $parent->term_id ) {
+				continue; // Not a subtopic of this topic.
 			}
-			$plan[] = [ 'week_commencing' => gmdate( 'Y-m-d', strtotime( $week ) ), 'focus' => $focus, 'short' => sanitize_text_field( (string) ( $w['short'] ?? '' ) ) ];
+			$rows[] = [ 'subtopic' => $sid, 'note' => sanitize_text_field( (string) ( $row['note'] ?? '' ) ) ];
 		}
-		usort( $plan, static fn( $a, $b ) => strcmp( $a['week_commencing'], $b['week_commencing'] ) );
+		$hidden = isset( $p['hidden'] ) && is_array( $p['hidden'] ) ? array_map( 'intval', $p['hidden'] ) : null;
+		mwm_set_pathway_order( $level, (int) $parent->term_id, $rows, $hidden );
+		$pw = mwm_pathway( $level, $topic );
+		return rest_ensure_response( [
+			'pathway'   => $pw,
+			'subtopics' => array_map( static fn( $st ) => [ 'id' => $st['id'], 'slug' => $st['slug'], 'name' => $st['name'] ], mwm_subtopics( (int) $parent->term_id ) ),
+			'created'   => $created,
+			'overviews' => self::pathways_payload(),
+		] );
+	}
 
-		$title   = $title ?: mwm_level_name( $level ) . ' revision pathway' . ( $boards ? ' (' . implode( ', ', array_map( 'mwm_board_name', $boards ) ) . ')' : '' );
-		$postarr = [ 'post_type' => 'mwm_pathway', 'post_status' => 'publish', 'post_title' => $title ];
-		if ( $id ) {
-			$postarr['ID'] = $id;
-			$id = (int) wp_update_post( $postarr, true );
-		} else {
-			$id = (int) wp_insert_post( $postarr, true );
+	/**
+	 * POST /studio/revision-plan { level, plan: [ { week, focus, short } ] }
+	 */
+	public static function studio_save_revision_plan( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$p     = (array) $r->get_json_params();
+		$level = sanitize_key( (string) ( $p['level'] ?? '' ) );
+		if ( ! isset( mwm_levels()[ $level ] ) ) {
+			return new WP_Error( 'missing_level', 'Pick the level this plan is for.', [ 'status' => 400 ] );
 		}
-		if ( is_wp_error( $id ) || ! $id ) {
-			return new WP_Error( 'save_failed', 'Something went wrong saving the pathway. Try again in a moment.', [ 'status' => 500 ] );
+		$plan = mwm_set_revision_plan( $level, (array) ( $p['plan'] ?? [] ) );
+		return rest_ensure_response( [ 'level' => $level, 'plan' => $plan, 'overviews' => self::pathways_payload() ] );
+	}
+
+	/**
+	 * Find a subtopic by name under a topic, or create it. $created is bumped when one is made.
+	 */
+	private static function upsert_subtopic( WP_Term $parent, string $name, int &$created = 0 ): int|WP_Error {
+		if ( $name === '' || mb_strlen( $name ) > 80 ) {
+			return new WP_Error( 'bad_name', 'Give the subtopic a short name (up to 80 characters).', [ 'status' => 400 ] );
 		}
-		wp_set_object_terms( $id, $level, 'mwm_level' );
-		wp_set_object_terms( $id, $boards, 'mwm_board' );
-		update_post_meta( $id, 'complete', $complete ? 1 : 0 );
-		if ( function_exists( 'update_field' ) ) {
-			update_field( 'field_mwm_pw_complete', $complete ? 1 : 0, $id );
-			update_field( 'field_mwm_pw_groups', $groups, $id );
-			update_field( 'field_mwm_pw_plan', $plan, $id );
+		foreach ( mwm_subtopics( (int) $parent->term_id ) as $s ) {
+			if ( mb_strtolower( $s['name'] ) === mb_strtolower( $name ) ) {
+				return (int) $s['id'];
+			}
 		}
-		return rest_ensure_response( mwm_pathway_data( $id ) );
+		$args = [ 'parent' => (int) $parent->term_id ];
+		if ( term_exists( sanitize_title( $name ), 'mwm_topic' ) ) {
+			$args['slug'] = $parent->slug . '-' . sanitize_title( $name ); // Same name lives under another topic.
+		}
+		$ins = wp_insert_term( $name, 'mwm_topic', $args );
+		if ( is_wp_error( $ins ) ) {
+			return new WP_Error( 'insert_failed', $ins->get_error_message(), [ 'status' => 400 ] );
+		}
+		$created++;
+		update_term_meta( (int) $ins['term_id'], 'order', 0 );
+		mwm_flush_pathway_cache();
+		return (int) $ins['term_id'];
 	}
 
 	/**
@@ -446,23 +483,9 @@ class MWM_REST {
 		if ( $name === '' || mb_strlen( $name ) > 80 ) {
 			return new WP_Error( 'bad_name', 'Give the subtopic a short name.', [ 'status' => 400 ] );
 		}
-		$term_id = 0;
-		foreach ( mwm_subtopics( (int) $parent->term_id ) as $s ) {
-			if ( mb_strtolower( $s['name'] ) === mb_strtolower( $name ) ) {
-				$term_id = $s['id'];
-			}
-		}
-		if ( ! $term_id ) {
-			$args = [ 'parent' => (int) $parent->term_id ];
-			if ( term_exists( sanitize_title( $name ), 'mwm_topic' ) ) {
-				$args['slug'] = $parent->slug . '-' . sanitize_title( $name ); // Same name lives under another topic.
-			}
-			$ins = wp_insert_term( $name, 'mwm_topic', $args );
-			if ( is_wp_error( $ins ) ) {
-				return new WP_Error( 'insert_failed', $ins->get_error_message(), [ 'status' => 400 ] );
-			}
-			$term_id = (int) $ins['term_id'];
-			update_term_meta( $term_id, 'order', 0 );
+		$term_id = self::upsert_subtopic( $parent, $name );
+		if ( is_wp_error( $term_id ) ) {
+			return $term_id;
 		}
 		$term = get_term( $term_id, 'mwm_topic' );
 		return rest_ensure_response( [ 'id' => $term_id, 'slug' => $term->slug, 'name' => wp_specialchars_decode( $term->name ), 'order' => 0, 'topic' => $parent->slug ] );
@@ -1004,24 +1027,6 @@ class MWM_REST {
 				];
 			}
 		}
-		if ( in_array( $kind, [ 'all', 'pathways' ], true ) ) {
-			foreach ( get_posts( [ 'post_type' => 'mwm_pathway', 'post_status' => 'publish', 'posts_per_page' => $limit, 'no_found_rows' => true ] ) as $p ) {
-				$d      = mwm_pathway_data( $p );
-				$boards = $d['boards'] ? implode( ', ', array_map( 'mwm_board_name', $d['boards'] ) ) : 'All boards';
-				$rows[] = [
-					'id'    => $p->ID,
-					'kind'  => 'Pathway',
-					'title' => $d['title'],
-					'meta'  => implode( ' · ', array_filter( [ $d['level_name'], $boards, $d['total'] . ' topics', $d['complete'] ? 'list complete' : 'more to add', count( $d['plan'] ) ? count( $d['plan'] ) . '-week plan' : '' ] ) ),
-					'flags' => $d['total'] ? [] : [ 'empty' ],
-					'url'   => trailingslashit( mwm_page_url( 'revision' ) ) . $d['level'] . '/' . ( $d['boards'][0] ?? '' ),
-					'level_slug' => $d['level'],
-					'boards' => array_values( (array) $d['boards'] ),
-					'date'  => $p->post_date,
-					'added' => 'Pathway · added ' . mwm_relative_label( $p->post_date ),
-				];
-			}
-		}
 		usort( $rows, static fn( $a, $b ) => strcmp( $b['date'], $a['date'] ) );
 		return $rows;
 	}
@@ -1031,7 +1036,7 @@ class MWM_REST {
 	}
 
 	private static function studio_types(): array {
-		return [ 'mwm_lesson', 'mwm_worksheet', 'mwm_past_paper', 'mwm_predicted_paper', 'mwm_exam_date', 'mwm_quiz', 'mwm_pathway' ];
+		return [ 'mwm_lesson', 'mwm_worksheet', 'mwm_past_paper', 'mwm_predicted_paper', 'mwm_exam_date', 'mwm_quiz' ];
 	}
 
 	public static function studio_trash( WP_REST_Request $r ): WP_REST_Response|WP_Error {

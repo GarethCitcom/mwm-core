@@ -102,6 +102,7 @@ function mwm_set_lesson_levels( int $lesson_id, $levels ): array {
 	}
 	delete_post_meta( $lesson_id, 'needs_level_review' ); // Kym has chosen the levels in the Studio.
 	delete_transient( 'mwm_topic_browser' );
+	mwm_flush_pathway_cache();
 	return $levels;
 }
 
@@ -853,7 +854,7 @@ function mwm_query_lessons_paged( array $args = [] ): array {
 }
 
 /* -------------------------------------------------------------------------
- * Exam dates, pathways, past papers
+ * Exam dates, past papers
  * ---------------------------------------------------------------------- */
 
 function mwm_exam_dates( string $level = '', string $board = '', bool $future_only = false ): array {
@@ -929,95 +930,335 @@ function mwm_next_exam( string $level, string $board ): ?array {
 	return null;
 }
 
-/**
- * Find the pathway for a level (and board, falling back to a pathway with no board).
- */
-function mwm_find_pathway( string $level, string $board = '' ): ?WP_Post {
-	$posts = get_posts( [
-		'post_type'      => 'mwm_pathway',
-		'post_status'    => 'publish',
-		'posts_per_page' => -1,
-		'no_found_rows'  => true,
-		'tax_query'      => [ [ 'taxonomy' => 'mwm_level', 'field' => 'slug', 'terms' => $level ] ],
-	] );
-	$fallback = null;
-	foreach ( $posts as $p ) {
-		$boards = wp_get_post_terms( $p->ID, 'mwm_board', [ 'fields' => 'slugs' ] );
-		if ( $board && in_array( $board, $boards, true ) ) {
-			return $p;
-		}
-		if ( ! $boards && ! $fallback ) {
-			$fallback = $p;
-		}
-	}
-	return $fallback ?: ( $posts[0] ?? null );
+/* -------------------------------------------------------------------------
+ * Revision pathways
+ *
+ * A pathway is one level + one topic ("GCSE Higher · Algebra"): the topic's subtopics in the order to revise
+ * them, with the lessons tagged with each subtopic at that level. Nothing is copied: lessons appear as soon
+ * as they are published. What Kym curates is the ORDER (and an optional note) per level and topic, stored as
+ * term meta on the topic term: pathway_{level} => [ [ 'subtopic' => term_id, 'note' => '' ], ... ].
+ *
+ *  - A placed subtopic with no lesson at that level shows as "Coming soon" (she can plan ahead).
+ *  - A subtopic with lessons that hasn't been placed yet goes at the end, flagged so the Studio can nag.
+ *  - A lesson with no subtopic at all also goes at the end, flagged "needs a subtopic".
+ * ---------------------------------------------------------------------- */
+
+function mwm_pathway_id( string $level, string $topic ): string {
+	return "$level:$topic";
+}
+
+function mwm_pathway_url( string $level, string $topic = '' ): string {
+	return trailingslashit( mwm_page_url( 'revision' ) ) . $level . '/' . ( $topic ? $topic . '/' : '' );
 }
 
 /**
- * Structured pathway data: groups → rows with resource flags.
+ * Forget cached overviews: call after anything that changes lessons, subtopics or an order.
  */
-function mwm_pathway_data( $post ): ?array {
-	$post = get_post( $post );
-	if ( ! $post || $post->post_type !== 'mwm_pathway' ) {
+function mwm_flush_pathway_cache(): void {
+	delete_transient( 'mwm_pathway_overviews' );
+}
+
+/**
+ * The saved order for a level + topic: rows of [ 'subtopic' => term_id, 'note' => '' ], subtopics that no
+ * longer exist dropped.
+ */
+function mwm_pathway_order( string $level, int $topic_id ): array {
+	$rows = get_term_meta( $topic_id, 'pathway_' . $level, true );
+	if ( ! is_array( $rows ) ) {
+		return [];
+	}
+	$valid = array_column( mwm_subtopics( $topic_id ), 'id' );
+	$out   = [];
+	$seen  = [];
+	foreach ( $rows as $r ) {
+		$sid = (int) ( $r['subtopic'] ?? 0 );
+		if ( ! $sid || isset( $seen[ $sid ] ) || ! in_array( $sid, $valid, true ) ) {
+			continue;
+		}
+		$seen[ $sid ] = true;
+		$out[] = [ 'subtopic' => $sid, 'note' => sanitize_text_field( (string) ( $r['note'] ?? '' ) ) ];
+	}
+	return $out;
+}
+
+/**
+ * Subtopics Kym has taken out of a level's pathway even though they have lessons at that level (the lessons
+ * stay on Learn Maths). Stored as pathway_{level}_hidden => [ term_id, ... ].
+ */
+function mwm_pathway_hidden( string $level, int $topic_id ): array {
+	$ids   = get_term_meta( $topic_id, 'pathway_' . $level . '_hidden', true );
+	$valid = array_column( mwm_subtopics( $topic_id ), 'id' );
+	return array_values( array_intersect( array_unique( array_map( 'intval', is_array( $ids ) ? $ids : [] ) ), $valid ) );
+}
+
+function mwm_set_pathway_order( string $level, int $topic_id, array $rows, ?array $hidden = null ): void {
+	$clean = [];
+	$seen  = [];
+	foreach ( $rows as $r ) {
+		$sid = (int) ( $r['subtopic'] ?? 0 );
+		if ( ! $sid || isset( $seen[ $sid ] ) ) {
+			continue;
+		}
+		$seen[ $sid ] = true;
+		$clean[] = [ 'subtopic' => $sid, 'note' => sanitize_text_field( (string) ( $r['note'] ?? '' ) ) ];
+	}
+	update_term_meta( $topic_id, 'pathway_' . $level, $clean );
+	if ( $hidden !== null ) { // Anything placed can't also be hidden.
+		update_term_meta( $topic_id, 'pathway_' . $level . '_hidden', array_values( array_diff( array_unique( array_map( 'intval', $hidden ) ), array_keys( $seen ) ) ) );
+	}
+	// Keep the subtopic order field in step so Learn Maths filters list them in pathway order too.
+	foreach ( $clean as $i => $r ) {
+		update_term_meta( $r['subtopic'], 'order', $i + 1 );
+	}
+	mwm_flush_pathway_cache();
+}
+
+/**
+ * The full pathway for a level + topic slug, or null when the topic doesn't exist or isn't for that level.
+ */
+function mwm_pathway( string $level, string $topic_slug ): ?array {
+	if ( ! isset( mwm_levels()[ $level ] ) ) {
 		return null;
 	}
-	$id        = $post->ID;
-	$groups    = function_exists( 'get_field' ) ? ( get_field( 'groups', $id ) ?: [] ) : [];
-	$step      = 0;
-	$total     = 0;
-	$with_ws   = 0;
-	$with_quiz = 0;
-	$out_groups = [];
-	foreach ( $groups as $gi => $g ) {
-		$rows = [];
-		foreach ( (array) ( $g['rows'] ?? [] ) as $ri => $r ) {
-			$step++;
-			$total++;
-			$lesson = ! empty( $r['lesson'] ) ? mwm_lesson_card( is_object( $r['lesson'] ) ? $r['lesson']->ID : (int) $r['lesson'] ) : null;
-			$soon   = ! empty( $r['coming_soon'] );
-			if ( $lesson && $lesson['has_worksheet'] ) {
-				$with_ws++;
-			}
-			if ( $lesson && $lesson['has_quiz'] ) {
-				$with_quiz++;
-			}
-			$rows[] = [
-				'key'         => "g{$gi}r{$ri}",
-				'step'        => str_pad( (string) $step, 2, '0', STR_PAD_LEFT ),
-				'topic'       => (string) ( $r['topic'] ?: ( $lesson['title'] ?? '' ) ),
-				'note'        => (string) ( $r['note'] ?? '' ),
-				'coming_soon' => $soon,
-				'lesson_id'   => $lesson['id'] ?? 0,
-				'lesson_title' => $lesson['title'] ?? '',
-				'url'         => $lesson['url'] ?? '',
-				'video'       => (bool) $lesson,
-				'worksheet'   => (bool) ( $lesson['has_worksheet'] ?? false ),
-				'quiz'        => (bool) ( $lesson['has_quiz'] ?? false ),
-				'quiz_url'    => $lesson['quiz_url'] ?? '',
-			];
+	$topic = null;
+	foreach ( mwm_topics( $level ) as $t ) {
+		if ( $t['slug'] === $topic_slug ) {
+			$topic = $t;
 		}
-		$out_groups[] = [ 'name' => (string) ( $g['name'] ?? '' ), 'rows' => $rows ];
 	}
-	$level  = mwm_get_term_slug( $id, 'mwm_level' );
-	$boards = wp_get_post_terms( $id, 'mwm_board', [ 'fields' => 'slugs' ] );
-	$plan   = function_exists( 'get_field' ) ? ( get_field( 'revision_plan', $id ) ?: [] ) : [];
+	if ( ! $topic ) {
+		return null;
+	}
+	$subtopics = [];
+	foreach ( mwm_subtopics( $topic['id'] ) as $st ) {
+		$subtopics[ $st['id'] ] = $st;
+	}
+	// Every lesson for this level + topic, oldest first, grouped by subtopic.
+	$by_sub  = [];
+	$orphans = [];
+	foreach ( mwm_query_lessons( [ 'level' => $level, 'topic' => $topic_slug, 'format' => 'lesson', 'orderby' => 'date', 'order' => 'ASC' ] ) as $c ) {
+		$sid = 0;
+		foreach ( $subtopics as $id => $st ) {
+			if ( $st['slug'] === $c['subtopic_slug'] ) {
+				$sid = $id;
+			}
+		}
+		$lesson = [
+			'id'            => $c['id'],
+			'title'         => $c['title'],
+			'url'           => $c['url'],
+			'has_worksheet' => $c['has_worksheet'],
+			'worksheet_url' => $c['worksheet_url'],
+			'has_quiz'      => $c['has_quiz'],
+			'quiz_id'       => $c['quiz_id'],
+			'quiz_url'      => $c['quiz_url'],
+		];
+		if ( $sid ) {
+			$by_sub[ $sid ][] = $lesson;
+		} else {
+			$orphans[] = $lesson;
+		}
+	}
+	$rows   = [];
+	$placed = [];
+	$step   = 0;
+	$row    = static function ( array $st, string $note, array $lessons, bool $is_placed ) use ( &$step ): array {
+		$step++;
+		return [
+			'key'            => 's' . $st['id'],
+			'step'           => str_pad( (string) $step, 2, '0', STR_PAD_LEFT ),
+			'subtopic_id'    => $st['id'],
+			'subtopic_slug'  => $st['slug'],
+			'name'           => $st['name'],
+			'note'           => $note,
+			'lessons'        => $lessons,
+			'coming_soon'    => ! $lessons,
+			'placed'         => $is_placed,
+			'needs_subtopic' => false,
+			'worksheet'      => (bool) array_filter( array_column( $lessons, 'has_worksheet' ) ),
+			'quiz'           => (bool) array_filter( array_column( $lessons, 'has_quiz' ) ),
+		];
+	};
+	$hidden_ids = mwm_pathway_hidden( $level, $topic['id'] );
+	foreach ( mwm_pathway_order( $level, $topic['id'] ) as $r ) {
+		if ( in_array( $r['subtopic'], $hidden_ids, true ) ) {
+			continue;
+		}
+		$placed[ $r['subtopic'] ] = true;
+		$rows[] = $row( $subtopics[ $r['subtopic'] ], $r['note'], $by_sub[ $r['subtopic'] ] ?? [], true );
+	}
+	$hidden = [];
+	foreach ( $by_sub as $sid => $lessons ) {
+		if ( in_array( $sid, $hidden_ids, true ) ) {
+			$hidden[] = [ 'subtopic_id' => $sid, 'name' => $subtopics[ $sid ]['name'], 'lessons' => $lessons ];
+		} elseif ( ! isset( $placed[ $sid ] ) ) {
+			$rows[] = $row( $subtopics[ $sid ], '', $lessons, false );
+		}
+	}
+	foreach ( $orphans as $lesson ) {
+		$step++;
+		$rows[] = [
+			'key'            => 'l' . $lesson['id'],
+			'step'           => str_pad( (string) $step, 2, '0', STR_PAD_LEFT ),
+			'subtopic_id'    => 0,
+			'subtopic_slug'  => '',
+			'name'           => $lesson['title'],
+			'note'           => '',
+			'lessons'        => [ $lesson ],
+			'coming_soon'    => false,
+			'placed'         => false,
+			'needs_subtopic' => true,
+			'worksheet'      => $lesson['has_worksheet'],
+			'quiz'           => $lesson['has_quiz'],
+		];
+	}
+	$with_lessons = count( array_filter( $rows, static fn( $r ) => ! $r['coming_soon'] ) );
 	return [
-		'id'              => $id,
-		'title'           => mwm_title( $id ),
+		'id'              => mwm_pathway_id( $level, $topic_slug ),
 		'level'           => $level,
 		'level_name'      => mwm_level_name( $level ),
-		'boards'          => is_wp_error( $boards ) ? [] : $boards,
-		'groups'          => $out_groups,
-		'total'           => $total,
-		'with_worksheets' => $with_ws,
-		'with_quizzes'    => $with_quiz,
-		'complete'        => (bool) get_post_meta( $id, 'complete', true ),
-		'plan'            => array_values( array_map( static fn( $w ) => [
-			'week'  => (string) ( $w['week_commencing'] ?? '' ),
-			'focus' => (string) ( $w['focus'] ?? '' ),
-			'short' => (string) ( $w['short'] ?? '' ),
-		], (array) $plan ) ),
+		'topic'           => $topic_slug,
+		'topic_id'        => $topic['id'],
+		'topic_name'      => $topic['name'],
+		'icon'            => $topic['icon'],
+		'url'             => mwm_pathway_url( $level, $topic_slug ),
+		'rows'            => $rows,
+		'total'           => count( $rows ),
+		'with_lessons'    => $with_lessons,
+		'coming_soon'     => count( $rows ) - $with_lessons,
+		'with_worksheets' => count( array_filter( $rows, static fn( $r ) => $r['worksheet'] ) ),
+		'with_quizzes'    => count( array_filter( $rows, static fn( $r ) => $r['quiz'] ) ),
+		'unplaced'        => count( array_filter( $rows, static fn( $r ) => ! $r['placed'] && ! $r['needs_subtopic'] ) ),
+		'orphans'         => count( $orphans ),
+		'hidden'          => $hidden,
 	];
+}
+
+/**
+ * One line per topic for a level: counts only, no rows. Cached (all levels in one transient) because the
+ * Revision overview, the home page, My Learning and the Studio dashboard all ask for it.
+ */
+function mwm_pathway_overview( string $level ): array {
+	$all = get_transient( 'mwm_pathway_overviews' );
+	if ( ! is_array( $all ) ) {
+		$all = [];
+	}
+	if ( ! isset( $all[ $level ] ) ) {
+		$all[ $level ] = [];
+		foreach ( mwm_topics( $level ) as $t ) {
+			$pw = mwm_pathway( $level, $t['slug'] );
+			if ( ! $pw ) {
+				continue;
+			}
+			$all[ $level ][] = array_intersect_key( $pw, array_flip( [ 'id', 'level', 'topic', 'topic_id', 'topic_name', 'icon', 'url', 'total', 'with_lessons', 'coming_soon', 'with_worksheets', 'with_quizzes', 'unplaced', 'orphans' ] ) )
+				+ [ 'keys' => array_column( array_filter( $pw['rows'], static fn( $r ) => ! $r['coming_soon'] ), 'key' ) ];
+		}
+		set_transient( 'mwm_pathway_overviews', $all, DAY_IN_SECONDS );
+	}
+	return $all[ $level ];
+}
+
+/**
+ * Where a lesson sits in its pathway at a level, and what comes after it (the next row with a lesson).
+ * Returns null when the lesson isn't in any pathway row for that level.
+ */
+function mwm_next_in_pathway( int $lesson_id, string $level ): ?array {
+	$card = mwm_lesson_card( $lesson_id );
+	if ( ! $card || ! $card['topic_slug'] ) {
+		return null;
+	}
+	$pw = mwm_pathway( $level, $card['topic_slug'] );
+	if ( ! $pw ) {
+		return null;
+	}
+	$found = false;
+	foreach ( $pw['rows'] as $r ) {
+		$here = in_array( $lesson_id, array_column( $r['lessons'], 'id' ), true );
+		if ( $found && ! $r['coming_soon'] ) {
+			return [ 'pathway' => $pw, 'found' => true, 'next' => $r ];
+		}
+		if ( $here ) {
+			$found = true;
+		}
+	}
+	return [ 'pathway' => $pw, 'found' => $found, 'next' => null ];
+}
+
+/**
+ * The pathway rows a lesson belongs to: one per level the lesson has, with the pathway id, the row key and
+ * the ids of every lesson in that row, so a lesson page can tick the row once all of them are complete.
+ * Cheap (term lookups and one ids-only query per level); no pathway is assembled.
+ */
+function mwm_lesson_pathway_rows( int $lesson_id ): array {
+	$tt = mwm_lesson_topic_terms( $lesson_id );
+	if ( ! $tt['topic'] ) {
+		return [];
+	}
+	$sub  = $tt['subtopic'];
+	$rows = [];
+	foreach ( mwm_post_levels( $lesson_id ) as $level ) {
+		$siblings = [ $lesson_id ];
+		if ( $sub ) {
+			$ids = get_posts( [
+				'post_type'      => 'mwm_lesson',
+				'post_status'    => 'publish',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'no_found_rows'  => true,
+				'tax_query'      => [
+					'relation' => 'AND',
+					[ 'taxonomy' => 'mwm_level', 'field' => 'slug', 'terms' => $level ],
+					[ 'taxonomy' => 'mwm_topic', 'field' => 'term_id', 'terms' => (int) $sub->term_id, 'include_children' => false ],
+					[ 'taxonomy' => 'mwm_format', 'field' => 'slug', 'terms' => 'lesson' ],
+				],
+			] );
+			$siblings = array_values( array_unique( array_merge( [ $lesson_id ], array_map( 'intval', (array) $ids ) ) ) );
+		}
+		$rows[] = [
+			'pathway'    => mwm_pathway_id( $level, $tt['topic']->slug ),
+			'key'        => $sub ? 's' . (int) $sub->term_id : 'l' . $lesson_id,
+			'level'      => $level,
+			'level_name' => mwm_level_name( $level ),
+			'topic_name' => wp_specialchars_decode( $tt['topic']->name ),
+			'url'        => mwm_pathway_url( $level, $tt['topic']->slug ),
+			'lessons'    => $siblings,
+		];
+	}
+	return $rows;
+}
+
+/**
+ * The suggested week-by-week revision plan for a level (shown on the exam calendar).
+ * Rows: [ 'week' => Y-m-d (Monday), 'focus' => '', 'short' => '' ], sorted by week.
+ */
+function mwm_revision_plan( string $level ): array {
+	$all  = (array) get_option( 'mwm_revision_plans', [] );
+	$rows = [];
+	foreach ( (array) ( $all[ $level ] ?? [] ) as $w ) {
+		$week = (string) ( $w['week'] ?? '' );
+		if ( $week && strtotime( $week ) ) {
+			$rows[] = [ 'week' => gmdate( 'Y-m-d', strtotime( $week ) ), 'focus' => (string) ( $w['focus'] ?? '' ), 'short' => (string) ( $w['short'] ?? '' ) ];
+		}
+	}
+	usort( $rows, static fn( $a, $b ) => strcmp( $a['week'], $b['week'] ) );
+	return $rows;
+}
+
+function mwm_set_revision_plan( string $level, array $rows ): array {
+	$clean = [];
+	foreach ( $rows as $w ) {
+		$week  = sanitize_text_field( (string) ( $w['week'] ?? '' ) );
+		$focus = sanitize_text_field( (string) ( $w['focus'] ?? '' ) );
+		if ( ! $week || ! strtotime( $week ) || $focus === '' ) {
+			continue;
+		}
+		$clean[] = [ 'week' => gmdate( 'Y-m-d', strtotime( $week ) ), 'focus' => $focus, 'short' => sanitize_text_field( (string) ( $w['short'] ?? '' ) ) ];
+	}
+	usort( $clean, static fn( $a, $b ) => strcmp( $a['week'], $b['week'] ) );
+	$all = (array) get_option( 'mwm_revision_plans', [] );
+	$all[ $level ] = $clean;
+	update_option( 'mwm_revision_plans', $all, false );
+	return $clean;
 }
 
 function mwm_past_paper_data( $post ): ?array {
