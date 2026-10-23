@@ -384,8 +384,8 @@ class MWM_REST {
 	}
 
 	/**
-	 * POST /studio/pathways { level, topic, rows: [ { subtopic: id, name: '', note: '' } ] }
-	 * Saves the order for one level + topic. A row with no id but a name creates that subtopic (or reuses one
+	 * POST /studio/pathways { level, topic, rows: [ { subtopic: id, name: '', note: '' } ], hidden: [ id, ... ] }
+	 * Saves the order for one level + topic; `hidden` lists subtopics with lessons that stay out of this pathway. A row with no id but a name creates that subtopic (or reuses one
 	 * with the same name), so a list pasted from ChatGPT works in one go.
 	 */
 	public static function studio_save_pathway( WP_REST_Request $r ): WP_REST_Response|WP_Error {
@@ -419,7 +419,8 @@ class MWM_REST {
 			}
 			$rows[] = [ 'subtopic' => $sid, 'note' => sanitize_text_field( (string) ( $row['note'] ?? '' ) ) ];
 		}
-		mwm_set_pathway_order( $level, (int) $parent->term_id, $rows );
+		$hidden = isset( $p['hidden'] ) && is_array( $p['hidden'] ) ? array_map( 'intval', $p['hidden'] ) : null;
+		mwm_set_pathway_order( $level, (int) $parent->term_id, $rows, $hidden );
 		$pw = mwm_pathway( $level, $topic );
 		return rest_ensure_response( [
 			'pathway'   => $pw,

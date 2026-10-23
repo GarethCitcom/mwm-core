@@ -1445,6 +1445,16 @@ html[data-theme="dark"] .mwm-tag--warn {
 	color: var(--link);
 	font-weight: 600;
 }
+.st-pw-place {
+	margin-right: 6px;
+	white-space: nowrap;
+}
+.st-prompt__then {
+	margin: 8px 0 0;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--muted);
+}
 .st-prompt__details summary {
 	cursor: pointer;
 	margin-top: 8px;

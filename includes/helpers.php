@@ -981,7 +981,17 @@ function mwm_pathway_order( string $level, int $topic_id ): array {
 	return $out;
 }
 
-function mwm_set_pathway_order( string $level, int $topic_id, array $rows ): void {
+/**
+ * Subtopics Kym has taken out of a level's pathway even though they have lessons at that level (the lessons
+ * stay on Learn Maths). Stored as pathway_{level}_hidden => [ term_id, ... ].
+ */
+function mwm_pathway_hidden( string $level, int $topic_id ): array {
+	$ids   = get_term_meta( $topic_id, 'pathway_' . $level . '_hidden', true );
+	$valid = array_column( mwm_subtopics( $topic_id ), 'id' );
+	return array_values( array_intersect( array_unique( array_map( 'intval', is_array( $ids ) ? $ids : [] ) ), $valid ) );
+}
+
+function mwm_set_pathway_order( string $level, int $topic_id, array $rows, ?array $hidden = null ): void {
 	$clean = [];
 	$seen  = [];
 	foreach ( $rows as $r ) {
@@ -993,6 +1003,9 @@ function mwm_set_pathway_order( string $level, int $topic_id, array $rows ): voi
 		$clean[] = [ 'subtopic' => $sid, 'note' => sanitize_text_field( (string) ( $r['note'] ?? '' ) ) ];
 	}
 	update_term_meta( $topic_id, 'pathway_' . $level, $clean );
+	if ( $hidden !== null ) { // Anything placed can't also be hidden.
+		update_term_meta( $topic_id, 'pathway_' . $level . '_hidden', array_values( array_diff( array_unique( array_map( 'intval', $hidden ) ), array_keys( $seen ) ) ) );
+	}
 	// Keep the subtopic order field in step so Learn Maths filters list them in pathway order too.
 	foreach ( $clean as $i => $r ) {
 		update_term_meta( $r['subtopic'], 'order', $i + 1 );
@@ -1066,12 +1079,19 @@ function mwm_pathway( string $level, string $topic_slug ): ?array {
 			'quiz'           => (bool) array_filter( array_column( $lessons, 'has_quiz' ) ),
 		];
 	};
+	$hidden_ids = mwm_pathway_hidden( $level, $topic['id'] );
 	foreach ( mwm_pathway_order( $level, $topic['id'] ) as $r ) {
+		if ( in_array( $r['subtopic'], $hidden_ids, true ) ) {
+			continue;
+		}
 		$placed[ $r['subtopic'] ] = true;
 		$rows[] = $row( $subtopics[ $r['subtopic'] ], $r['note'], $by_sub[ $r['subtopic'] ] ?? [], true );
 	}
+	$hidden = [];
 	foreach ( $by_sub as $sid => $lessons ) {
-		if ( ! isset( $placed[ $sid ] ) ) {
+		if ( in_array( $sid, $hidden_ids, true ) ) {
+			$hidden[] = [ 'subtopic_id' => $sid, 'name' => $subtopics[ $sid ]['name'], 'lessons' => $lessons ];
+		} elseif ( ! isset( $placed[ $sid ] ) ) {
 			$rows[] = $row( $subtopics[ $sid ], '', $lessons, false );
 		}
 	}
@@ -1110,6 +1130,7 @@ function mwm_pathway( string $level, string $topic_slug ): ?array {
 		'with_quizzes'    => count( array_filter( $rows, static fn( $r ) => $r['quiz'] ) ),
 		'unplaced'        => count( array_filter( $rows, static fn( $r ) => ! $r['placed'] && ! $r['needs_subtopic'] ) ),
 		'orphans'         => count( $orphans ),
+		'hidden'          => $hidden,
 	];
 }
 

@@ -569,6 +569,7 @@
 		P.data = d.pathway; P.subtopics = d.subtopics || [];
 		P.rows = d.pathway.rows.filter(function (r) { return !r.needs_subtopic; }).map(function (r) { return { subtopic: r.subtopic_id, name: r.name, note: r.note || '', lessons: r.lessons || [], placed: r.placed }; });
 		P.orphans = d.pathway.rows.filter(function (r) { return r.needs_subtopic; }).map(function (r) { return r.lessons[0]; });
+		P.hidden = (d.pathway.hidden || []).map(function (h) { return { subtopic: h.subtopic_id, name: h.name, lessons: h.lessons || [] }; });
 	}
 	/* One subtopic per line, optional " | note" after it. Numbering and bullets are ignored. */
 	function pwParse(text) {
@@ -592,7 +593,7 @@
 		var P = S.pw;
 		if (!P.rows.length) { P.error = 'Add at least one subtopic first.'; render(); return; }
 		P.saving = true; P.error = ''; P.saved = ''; render();
-		api('studio/pathways', { method: 'POST', body: { level: P.level, topic: P.topic, rows: P.rows.map(function (r) { return { subtopic: r.subtopic, name: r.name, note: r.note }; }) } }).then(function (d) {
+		api('studio/pathways', { method: 'POST', body: { level: P.level, topic: P.topic, rows: P.rows.map(function (r) { return { subtopic: r.subtopic, name: r.name, note: r.note }; }), hidden: (P.hidden || []).map(function (h) { return h.subtopic; }) } }).then(function (d) {
 			P.saving = false; pwLoad(d);
 			if (d.overviews) { S.pathways = d.overviews.levels || S.pathways; P.plans = d.overviews.plans || P.plans; }
 			P.saved = 'Saved. It’s live on the Revision page now.' + (d.created ? ' ' + d.created + (d.created === 1 ? ' new subtopic was created.' : ' new subtopics were created.') : '');
@@ -620,10 +621,10 @@
 		var list = P.rows.length ? P.rows.map(function (r, i) { return (i + 1) + '. ' + r.name + (r.lessons.length ? '' : ' (no lesson yet)'); }).join('\n') : '(none yet)';
 		var intro = 'I run a free maths revision website for UK students. ';
 		return [
-			{ key: 'order', title: 'Put my subtopics in the best order', text: intro + 'These are my ' + lvl + ' ' + topic + ' subtopics, in the order they are in now:\n\n' + list + '\n\nPut them in the best order for a student to revise them, building from the basics up so each one only needs what came before it. Keep my wording for each subtopic exactly as it is and do not add or remove any. ' + PW_FORMAT },
-			{ key: 'gaps', title: 'What subtopics am I missing?', text: intro + 'For ' + lvl + ' ' + topic + ' I have these subtopics:\n\n' + list + '\n\nCompare them with the ' + qual + ' maths specifications for Edexcel, AQA and OCR' + (isA ? '' : (P.level === 'gcse-foundation' ? ' (Foundation tier only)' : ' (Higher tier, including Higher-only content)')) + '. List only the subtopics I am missing, using short names in the same style as mine, in the order a student should learn them. ' + PW_FORMAT },
-			{ key: 'notes', title: 'Suggest “needs first” notes', text: intro + 'These are my ' + lvl + ' ' + topic + ' subtopics in revision order:\n\n' + list + '\n\nFor each one, say in a few words what a student should already know before starting it, if anything (for example “needs: fractions”). Keep every subtopic, in this order, with my wording. ' + PW_FORMAT + '\nLeave the part after the bar empty when nothing is needed first.' },
-			{ key: 'full', title: 'Write the whole list from scratch', text: intro + 'Write the complete list of ' + lvl + ' ' + topic + ' subtopics a student needs for the ' + qual + ' maths exam (Edexcel, AQA and OCR' + (isA ? '' : (P.level === 'gcse-foundation' ? ', Foundation tier only' : ', Higher tier')) + '), in the order to revise them, building from the basics up. Use short names a student would recognise, such as “Solving linear equations” or “Sharing in a ratio”, one idea per line, between 10 and 30 lines. ' + PW_FORMAT }
+			{ key: 'order', title: 'Put my subtopics in the best order', then: 'Then paste the reply into the box below and press “Use this order”.', text: intro + 'These are my ' + lvl + ' ' + topic + ' subtopics, in the order they are in now:\n\n' + list + '\n\nPut them in the best order for a student to revise them, building from the basics up so each one only needs what came before it. Keep my wording for each subtopic exactly as it is and do not add or remove any. ' + PW_FORMAT },
+			{ key: 'gaps', title: 'What subtopics am I missing?', then: 'Then paste the reply below and press “Add to the end”, and move each new one into place.', text: intro + 'For ' + lvl + ' ' + topic + ' I have these subtopics:\n\n' + list + '\n\nCompare them with the ' + qual + ' maths specifications for Edexcel, AQA and OCR' + (isA ? '' : (P.level === 'gcse-foundation' ? ' (Foundation tier only)' : ' (Higher tier, including Higher-only content)')) + '. List only the subtopics I am missing, using short names in the same style as mine, in the order a student should learn them. ' + PW_FORMAT },
+			{ key: 'notes', title: 'Suggest “needs first” notes', then: 'Then paste the reply below and press “Use this order”: the notes are added to the matching subtopics.', text: intro + 'These are my ' + lvl + ' ' + topic + ' subtopics in revision order:\n\n' + list + '\n\nFor each one, say in a few words what a student should already know before starting it, if anything (for example “needs: fractions”). Keep every subtopic, in this order, with my wording. ' + PW_FORMAT + '\nLeave the part after the bar empty when nothing is needed first.' },
+			{ key: 'full', title: 'Write the whole list from scratch', then: 'Then paste the reply below and press “Use this order”. Anything already here that has lessons but isn’t in the reply drops to the end as “needs placing”.', text: intro + 'Write the complete list of ' + lvl + ' ' + topic + ' subtopics a student needs for the ' + qual + ' maths exam (Edexcel, AQA and OCR' + (isA ? '' : (P.level === 'gcse-foundation' ? ', Foundation tier only' : ', Higher tier')) + '), in the order to revise them, building from the basics up. Use short names a student would recognise, such as “Solving linear equations” or “Sharing in a ratio”, one idea per line, between 10 and 30 lines. ' + PW_FORMAT }
 		];
 	}
 	function pwPlanPrompt(level) {
@@ -636,8 +637,9 @@
 			'Reply with one line per week and nothing else, in this exact format:\n2027-03-01 | Number: fractions, percentages and ratio | Number\n' +
 			'The first part is the Monday of that week as YYYY-MM-DD, the second is the focus for the week in a few words, the third is a one or two word label for a calendar.';
 	}
-	function promptBox(key, title, text, copied) {
+	function promptBox(key, title, text, copied, then) {
 		return '<div class="st-prompt"><div class="st-prompt__head"><span class="st-prompt__title">' + esc(title) + '</span><button type="button" class="st-copy" data-pw-copy="' + esc(key) + '">' + (copied === key ? '✓ Copied' : 'Copy') + '</button></div>' +
+			(then ? '<p class="st-prompt__then">' + esc(then) + '</p>' : '') +
 			'<details class="st-prompt__details"><summary>Show the prompt</summary><pre class="st-prompt__text">' + esc(text) + '</pre></details></div>';
 	}
 	function pwPlanPanel(level) {
@@ -683,16 +685,21 @@
 		html += '<div class="st-panel"><h2>1 · Subtopics, in the order to revise them</h2>';
 		if (!P.rows.length) { html += '<p class="st-note st-note--8">Nothing here yet. Add subtopics below, or paste a list.</p>'; }
 		html += P.rows.map(function (r, i) {
-			var tools = '<button type="button" class="st-iconbtn" aria-label="Move up" data-pw-move="up" data-i="' + i + '"' + (i === 0 ? ' disabled' : '') + '>↑</button><button type="button" class="st-iconbtn" aria-label="Move down" data-pw-move="down" data-i="' + i + '"' + (i === P.rows.length - 1 ? ' disabled' : '') + '>↓</button>' +
-				(r.lessons.length ? '' : '<button type="button" class="st-iconbtn st-iconbtn--danger" aria-label="Remove from this pathway" title="Take it out of this pathway (the subtopic itself stays)" data-pw-remove="' + i + '">✕</button>');
+			var tools = (r.placed ? '' : '<button type="button" class="st-smallbtn st-pw-place" data-pw-place="' + i + '" title="It’s in the right spot">✓ Place here</button>') +
+				'<button type="button" class="st-iconbtn" aria-label="Move up" data-pw-move="up" data-i="' + i + '"' + (i === 0 ? ' disabled' : '') + '>↑</button><button type="button" class="st-iconbtn" aria-label="Move down" data-pw-move="down" data-i="' + i + '"' + (i === P.rows.length - 1 ? ' disabled' : '') + '>↓</button>' +
+				'<button type="button" class="st-iconbtn st-iconbtn--danger" aria-label="Remove from this pathway" title="' + (r.lessons.length ? 'Take it out of this pathway. Its lessons stay on Learn Maths and you can put it back below.' : 'Take it out of this pathway (the subtopic itself stays)') + '" data-pw-remove="' + i + '">✕</button>';
 			return '<div class="st-pw-row' + (r.placed ? '' : ' is-unplaced') + (r.subtopic ? '' : ' is-new') + '"><span class="st-pw-row__step">' + (i + 1 < 10 ? '0' + (i + 1) : i + 1) + '</span>' +
 				'<div class="st-pw-row__main"><div class="st-pw-row__name">' + esc(r.name) + (r.placed ? '' : ' ' + tag('Needs placing', 'mwm-tag--warn mwm-tag--sm')) + (r.subtopic ? '' : ' ' + tag('New', 'mwm-tag--outline mwm-tag--sm')) + '</div>' +
 				'<div class="st-pw-row__lessons' + (r.lessons.length ? '' : ' is-soon') + '">' + esc(pwLessonLine(r)) + '</div>' +
 				'<input type="text" class="st-input st-input--sm st-pw-row__note" value="' + esc(r.note) + '" placeholder="Needs first (optional), e.g. needs: fractions" aria-label="Needs-first note" data-pw-note="' + i + '"></div>' +
 				'<div class="st-pw-row__tools">' + tools + '</div></div>';
 		}).join('');
-		if (P.rows.some(function (r) { return !r.placed; })) { html += '<p class="st-note st-note--12">“Needs placing” subtopics have lessons but no position yet, so students see them at the end. Move each one to where it belongs and publish.</p>'; }
+		if (P.rows.some(function (r) { return !r.placed; })) { html += '<p class="st-note st-note--12">“Needs placing” subtopics have lessons but no position yet, so students see them at the end. Move each one to where it belongs, or press “Place here” if it’s already right, then publish.</p>'; }
 		html += '</div>';
+		if (P.hidden && P.hidden.length) {
+			html += '<div class="st-panel"><h2>Hidden from this pathway</h2><p class="st-panel__sub">These have lessons at this level but you’ve taken them out of the ' + esc(D.level_name) + ' ' + esc(D.topic_name) + ' pathway. The lessons still show on Learn Maths.</p><div class="st-list st-list--12">' +
+				P.hidden.map(function (h, i) { return '<div class="st-list__row"><div class="st-list__main"><div class="st-list__name">' + esc(h.name) + '</div><div class="st-list__sub">' + esc(h.lessons.map(function (l) { return l.title; }).join(' · ')) + '</div></div><button type="button" class="st-smallbtn" data-pw-unhide="' + i + '">Put back</button></div>'; }).join('') + '</div></div>';
+		}
 		if (P.orphans.length) {
 			html += '<div class="st-panel"><h2>Lessons with no subtopic</h2><p class="st-panel__sub">These sit at the end of the pathway until they have a subtopic. Open each lesson and pick one.</p><div class="st-list st-list--12">' +
 				P.orphans.map(function (l) { return '<div class="st-list__row"><span class="st-list__name">' + esc(l.title) + '</span><button type="button" class="st-smallbtn" data-edit="' + l.id + '">Edit lesson</button></div>'; }).join('') + '</div></div>';
@@ -700,14 +707,14 @@
 		var spare = P.subtopics.filter(function (st) { return !P.rows.some(function (r) { return r.subtopic === st.id || r.name.toLowerCase() === st.name.toLowerCase(); }); });
 		html += '<div class="st-panel"><h2>2 · Add subtopics</h2>' +
 			'<div class="st-inputrow"><input type="text" class="st-input" value="' + esc(P.add) + '" placeholder="e.g. Solving quadratics by factorising" aria-label="New subtopic" data-pw-add-input><button type="button" class="mwm-btn mwm-btn--secondary" data-pw-add' + (P.add.trim() ? '' : ' disabled') + '>Add</button></div>' +
-			(spare.length ? '<div class="st-label st-label--16">Already on the site but not in this pathway</div><div class="st-chips st-chips--12">' + spare.map(function (st) { return chip(st.name, false, { 'pw-pick': st.id }); }).join('') + '</div>' : '') +
-			'<div class="st-label st-label--24">Or paste a list</div><p class="st-panel__sub" style="margin-top:4px">One subtopic per line, in order. Add a “needs first” note after a vertical bar if you like: <code>Solving quadratics | needs: factorising</code>. Names that already exist are matched; new ones are created when you publish.</p>' +
-			'<textarea class="st-textarea st-textarea--paste" rows="6" aria-label="Paste a list of subtopics" placeholder="Expanding brackets&#10;Factorising&#10;Solving linear equations | needs: collecting like terms" data-pw-paste>' + esc(P.paste) + '</textarea>' +
-			'<div class="st-actions"><button type="button" class="mwm-btn mwm-btn--secondary mwm-btn--sm" data-pw-paste-apply="append"' + (P.paste.trim() ? '' : ' disabled') + '>Add to the end</button><button type="button" class="mwm-btn mwm-btn--secondary mwm-btn--sm" data-pw-paste-apply="replace"' + (P.paste.trim() ? '' : ' disabled') + '>Use this order</button></div>' +
-			'<p class="st-note st-note--8">“Use this order” puts the list in the order you pasted; anything with lessons that you left out stays at the end as “needs placing”.</p></div>';
-		html += '<div class="st-panel"><h2>3 · Ask ChatGPT for help <span style="font-weight:400;color:var(--muted)">(optional)</span></h2>' +
-			'<p class="st-panel__sub">Each prompt already includes your current list. Copy it, paste it into ChatGPT, then paste the reply into the box above: every prompt asks for the same one-per-line format.</p>' +
-			pwPrompts().map(function (pr) { return promptBox(pr.key, pr.title, pr.text, P.copied); }).join('') + '</div>';
+			(spare.length ? '<div class="st-label st-label--16">Already on the site but not in this pathway</div><div class="st-chips st-chips--12">' + spare.map(function (st) { return chip(st.name, false, { 'pw-pick': st.id }); }).join('') + '</div>' : '') + '</div>';
+		html += '<div class="st-panel"><h2>3 · Paste a list <span style="font-weight:400;color:var(--muted)">(from ChatGPT, or anywhere)</span></h2>' +
+			'<p class="st-panel__sub">Need a list? Copy one of these prompts into ChatGPT. Each already includes your current subtopics and asks for a reply in the right format: one subtopic per line, in order, with an optional “needs first” note after a vertical bar.</p>' +
+			pwPrompts().map(function (pr) { return promptBox(pr.key, pr.title, pr.text, P.copied, pr.then); }).join('') +
+			'<div class="st-label st-label--24" id="st-pw-paste-label">Paste the reply here</div><p class="st-panel__sub" style="margin-top:4px">Or type your own list: one subtopic per line, e.g. <code>Solving quadratics | needs: factorising</code>. Names that already exist are matched; new ones are created when you publish.</p>' +
+			'<textarea class="st-textarea st-textarea--paste" rows="8" aria-labelledby="st-pw-paste-label" placeholder="Expanding brackets&#10;Factorising&#10;Solving linear equations | needs: collecting like terms" data-pw-paste>' + esc(P.paste) + '</textarea>' +
+			'<div class="st-actions"><button type="button" class="mwm-btn mwm-btn--primary mwm-btn--sm" data-pw-paste-apply="replace"' + (P.paste.trim() ? '' : ' disabled') + '>Use this order</button><button type="button" class="mwm-btn mwm-btn--secondary mwm-btn--sm" data-pw-paste-apply="append"' + (P.paste.trim() ? '' : ' disabled') + '>Add to the end</button></div>' +
+			'<p class="st-note st-note--8">“Use this order” rebuilds section 1 in the order you pasted (anything with lessons that you left out drops to the end as “needs placing”). “Add to the end” keeps what’s there and adds the new ones after it. Either way, nothing is saved until you publish.</p></div>';
 		html += '<div class="st-panel"><h2>4 · Publish</h2>' +
 			'<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish st-publish--12" data-publish-pw' + (P.saving ? ' disabled' : '') + '>' + (P.saving ? 'Publishing…' : 'Publish this order') + '</button>' +
 			(P.error ? '<p class="st-error">' + esc(P.error) + '</p>' : '') + (P.saved ? '<p class="st-note st-note--12 st-saved">✓ ' + esc(P.saved) + '</p>' : '') +
@@ -1463,10 +1470,20 @@
 		if ((el = e.target.closest('[data-pw-list]'))) { PW.topic = ''; PW.data = null; PW.copied = ''; render(); window.scrollTo(0, 0); return; }
 		if ((el = e.target.closest('[data-pw-move]'))) {
 			var mi = Number(el.getAttribute('data-i')), mj = mi + (el.getAttribute('data-pw-move') === 'up' ? -1 : 1);
-			if (PW.rows[mj]) { var tmp = PW.rows[mi]; PW.rows[mi] = PW.rows[mj]; PW.rows[mj] = tmp; PW.rows[mi].placed = true; PW.rows[mj].placed = true; PW.saved = ''; render(); }
+			if (PW.rows[mj]) { var tmp = PW.rows[mi]; PW.rows[mi] = PW.rows[mj]; PW.rows[mj] = tmp; tmp.placed = true; PW.saved = ''; render(); }
 			return;
 		}
-		if ((el = e.target.closest('[data-pw-remove]'))) { PW.rows.splice(Number(el.getAttribute('data-pw-remove')), 1); PW.saved = ''; render(); return; }
+		if ((el = e.target.closest('[data-pw-place]'))) { PW.rows[Number(el.getAttribute('data-pw-place'))].placed = true; PW.saved = ''; render(); return; }
+		if ((el = e.target.closest('[data-pw-remove]'))) {
+			var gone = PW.rows.splice(Number(el.getAttribute('data-pw-remove')), 1)[0];
+			if (gone && gone.lessons.length && gone.subtopic) { PW.hidden = (PW.hidden || []).concat([{ subtopic: gone.subtopic, name: gone.name, lessons: gone.lessons }]); toast('Taken out. Its lessons stay on Learn Maths; put it back any time.'); }
+			PW.saved = ''; render(); return;
+		}
+		if ((el = e.target.closest('[data-pw-unhide]'))) {
+			var back = PW.hidden.splice(Number(el.getAttribute('data-pw-unhide')), 1)[0];
+			if (back) { PW.rows.push({ subtopic: back.subtopic, name: back.name, note: '', lessons: back.lessons, placed: false }); }
+			PW.saved = ''; render(); return;
+		}
 		if ((el = e.target.closest('[data-pw-add]'))) { if (pwAddRow(PW.add, '', 0)) { PW.add = ''; PW.saved = ''; } else { toast('That subtopic is already in the list.'); } render(); var ai = root.querySelector('[data-pw-add-input]'); if (ai) { ai.focus(); } return; }
 		if ((el = e.target.closest('[data-pw-pick]'))) { var pk = Number(el.getAttribute('data-pw-pick')), pst = PW.subtopics.filter(function (s) { return s.id === pk; })[0]; if (pst) { pwAddRow(pst.name, '', pst.id); PW.saved = ''; render(); } return; }
 		if ((el = e.target.closest('[data-pw-paste-apply]'))) {
