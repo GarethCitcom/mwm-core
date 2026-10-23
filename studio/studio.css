@@ -1422,9 +1422,31 @@ html[data-theme="dark"] .mwm-tag--warn {
 .st-pw-row__lessons.is-soon {
 	font-style: italic;
 }
-.st-pw-row__note {
-	margin-top: 8px;
+.st-pw-row__tip {
+	display: block;
+	margin-top: 10px;
 	max-width: 520px;
+}
+.st-pw-row__tiplabel {
+	display: block;
+	font-size: 13px;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+.st-pw-row__tiplabel span {
+	font-weight: 400;
+	color: var(--muted);
+}
+.st-pw-row__note {
+	width: 100%;
+	box-sizing: border-box;
+}
+.st-pw-row__tiphint {
+	display: block;
+	margin-top: 4px;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--muted);
 }
 .st-pw-row.is-unplaced {
 	background: var(--tint);

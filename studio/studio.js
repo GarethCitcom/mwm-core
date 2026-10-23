@@ -550,7 +550,7 @@
 
 	/* ---------------------------------------------------------------- revision pathways */
 	/* A pathway is one level + one topic: the topic's subtopics in revision order. Lessons slot in by their subtopic,
-	   so Kym only curates the order (and a "needs first" note). Rows here: { subtopic: id (0 = new), name, note, lessons, placed }. */
+	   so Kym only curates the order (and an optional tip for students, shown under the subtopic). Rows here: { subtopic: id (0 = new), name, note, lessons, placed }. */
 	function pwOverview(level) { return (S.pathways && S.pathways[level]) || []; }
 	function pwCount(field) {
 		var n = 0;
@@ -623,7 +623,7 @@
 		return [
 			{ key: 'order', title: 'Put my subtopics in the best order', then: 'Then paste the reply into the box below and press “Use this order”.', text: intro + 'These are my ' + lvl + ' ' + topic + ' subtopics, in the order they are in now:\n\n' + list + '\n\nPut them in the best order for a student to revise them, building from the basics up so each one only needs what came before it. Keep my wording for each subtopic exactly as it is and do not add or remove any. ' + PW_FORMAT },
 			{ key: 'gaps', title: 'What subtopics am I missing?', then: 'Then paste the reply below and press “Add to the end”, and move each new one into place.', text: intro + 'For ' + lvl + ' ' + topic + ' I have these subtopics:\n\n' + list + '\n\nCompare them with the ' + qual + ' maths specifications for Edexcel, AQA and OCR' + (isA ? '' : (P.level === 'gcse-foundation' ? ' (Foundation tier only)' : ' (Higher tier, including Higher-only content)')) + '. List only the subtopics I am missing, using short names in the same style as mine, in the order a student should learn them. ' + PW_FORMAT },
-			{ key: 'notes', title: 'Suggest “needs first” notes', then: 'Then paste the reply below and press “Use this order”: the notes are added to the matching subtopics.', text: intro + 'These are my ' + lvl + ' ' + topic + ' subtopics in revision order:\n\n' + list + '\n\nFor each one, say in a few words what a student should already know before starting it, if anything (for example “needs: fractions”). Keep every subtopic, in this order, with my wording. ' + PW_FORMAT + '\nLeave the part after the bar empty when nothing is needed first.' },
+			{ key: 'notes', title: 'Suggest tips for students', then: 'Then paste the reply below and press “Use this order”: each tip is added to its matching subtopic.', text: intro + 'These are my ' + lvl + ' ' + topic + ' subtopics in revision order:\n\n' + list + '\n\nFor each one, say in a few words what a student should already know before starting it, if anything (for example “needs: fractions”). Keep every subtopic, in this order, with my wording. ' + PW_FORMAT + '\nLeave the part after the bar empty when nothing is needed first.' },
 			{ key: 'full', title: 'Write the whole list from scratch', then: 'Then paste the reply below and press “Use this order”. Anything already here that has lessons but isn’t in the reply drops to the end as “needs placing”.', text: intro + 'Write the complete list of ' + lvl + ' ' + topic + ' subtopics a student needs for the ' + qual + ' maths exam (Edexcel, AQA and OCR' + (isA ? '' : (P.level === 'gcse-foundation' ? ', Foundation tier only' : ', Higher tier')) + '), in the order to revise them, building from the basics up. Use short names a student would recognise, such as “Solving linear equations” or “Sharing in a ratio”, one idea per line, between 10 and 30 lines. ' + PW_FORMAT }
 		];
 	}
@@ -681,7 +681,7 @@
 		if (P.loading || !P.data) { return html + '<h1 class="st-h1 st-h1--after-back">Loading…</h1>'; }
 		var D = P.data;
 		html += '<h1 class="st-h1 st-h1--after-back">' + esc(D.topic_name) + ' <span class="st-h1__muted">· ' + esc(D.level_name) + '</span></h1>' +
-			'<p class="st-intro">Students see these subtopics in this order, each with its lessons underneath. Use the arrows to reorder, add a “needs first” note where it helps, and publish. <a href="' + esc(D.url) + '" target="_blank" rel="noopener">See it on the site</a>.</p>';
+			'<p class="st-intro">Students see these subtopics in this order, each with its lessons underneath. Use the arrows to reorder, add a tip for students where it helps (what to be comfortable with first), and publish. <a href="' + esc(D.url) + '" target="_blank" rel="noopener">See it on the site</a>.</p>';
 		html += '<div class="st-panel"><h2>1 · Subtopics, in the order to revise them</h2>';
 		if (!P.rows.length) { html += '<p class="st-note st-note--8">Nothing here yet. Add subtopics below, or paste a list.</p>'; }
 		html += P.rows.map(function (r, i) {
@@ -691,7 +691,7 @@
 			return '<div class="st-pw-row' + (r.placed ? '' : ' is-unplaced') + (r.subtopic ? '' : ' is-new') + '"><span class="st-pw-row__step">' + (i + 1 < 10 ? '0' + (i + 1) : i + 1) + '</span>' +
 				'<div class="st-pw-row__main"><div class="st-pw-row__name">' + esc(r.name) + (r.placed ? '' : ' ' + tag('Needs placing', 'mwm-tag--warn mwm-tag--sm')) + (r.subtopic ? '' : ' ' + tag('New', 'mwm-tag--outline mwm-tag--sm')) + '</div>' +
 				'<div class="st-pw-row__lessons' + (r.lessons.length ? '' : ' is-soon') + '">' + esc(pwLessonLine(r)) + '</div>' +
-				'<input type="text" class="st-input st-input--sm st-pw-row__note" value="' + esc(r.note) + '" placeholder="Needs first (optional), e.g. needs: fractions" aria-label="Needs-first note" data-pw-note="' + i + '"></div>' +
+				'<label class="st-pw-row__tip"><span class="st-pw-row__tiplabel">Tip for students <span>(optional)</span></span><input type="text" class="st-input st-input--sm st-pw-row__note" value="' + esc(r.note) + '" placeholder="e.g. Do fractions first" data-pw-note="' + i + '"><span class="st-pw-row__tiphint">Shows in grey under the subtopic on the Revision page.</span></label></div>' +
 				'<div class="st-pw-row__tools">' + tools + '</div></div>';
 		}).join('');
 		if (P.rows.some(function (r) { return !r.placed; })) { html += '<p class="st-note st-note--12">“Needs placing” subtopics have lessons but no position yet, so students see them at the end. Move each one to where it belongs, or press “Place here” if it’s already right, then publish.</p>'; }
@@ -709,7 +709,7 @@
 			'<div class="st-inputrow"><input type="text" class="st-input" value="' + esc(P.add) + '" placeholder="e.g. Solving quadratics by factorising" aria-label="New subtopic" data-pw-add-input><button type="button" class="mwm-btn mwm-btn--secondary" data-pw-add' + (P.add.trim() ? '' : ' disabled') + '>Add</button></div>' +
 			(spare.length ? '<div class="st-label st-label--16">Already on the site but not in this pathway</div><div class="st-chips st-chips--12">' + spare.map(function (st) { return chip(st.name, false, { 'pw-pick': st.id }); }).join('') + '</div>' : '') + '</div>';
 		html += '<div class="st-panel"><h2>3 · Paste a list <span style="font-weight:400;color:var(--muted)">(from ChatGPT, or anywhere)</span></h2>' +
-			'<p class="st-panel__sub">Need a list? Copy one of these prompts into ChatGPT. Each already includes your current subtopics and asks for a reply in the right format: one subtopic per line, in order, with an optional “needs first” note after a vertical bar.</p>' +
+			'<p class="st-panel__sub">Need a list? Copy one of these prompts into ChatGPT. Each already includes your current subtopics and asks for a reply in the right format: one subtopic per line, in order, with an optional tip for students after a vertical bar.</p>' +
 			pwPrompts().map(function (pr) { return promptBox(pr.key, pr.title, pr.text, P.copied, pr.then); }).join('') +
 			'<div class="st-label st-label--24" id="st-pw-paste-label">Paste the reply here</div><p class="st-panel__sub" style="margin-top:4px">Or type your own list: one subtopic per line, e.g. <code>Solving quadratics | needs: factorising</code>. Names that already exist are matched; new ones are created when you publish.</p>' +
 			'<textarea class="st-textarea st-textarea--paste" rows="8" aria-labelledby="st-pw-paste-label" placeholder="Expanding brackets&#10;Factorising&#10;Solving linear equations | needs: collecting like terms" data-pw-paste>' + esc(P.paste) + '</textarea>' +
