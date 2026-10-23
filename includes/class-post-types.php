@@ -32,8 +32,11 @@ class MWM_Post_Types {
 		} );
 		add_filter( 'wp_insert_post_data', [ __CLASS__, 'auto_titles' ], 10, 2 );
 		add_action( 'save_post_mwm_lesson', [ __CLASS__, 'on_save_lesson' ], 20, 2 );
-		foreach ( [ 'save_post_mwm_lesson', 'trashed_post', 'untrashed_post', 'deleted_post' ] as $hook ) { // Home page topic counts are cached.
-			add_action( $hook, static function () { delete_transient( 'mwm_topic_browser' ); } );
+		foreach ( [ 'save_post_mwm_lesson', 'trashed_post', 'untrashed_post', 'deleted_post' ] as $hook ) { // Home page topic counts and pathway overviews are cached.
+			add_action( $hook, static function () { delete_transient( 'mwm_topic_browser' ); mwm_flush_pathway_cache(); } );
+		}
+		foreach ( [ 'created_mwm_topic', 'edited_mwm_topic', 'delete_mwm_topic' ] as $hook ) { // Subtopics are pathway rows.
+			add_action( $hook, 'mwm_flush_pathway_cache' );
 		}
 		add_action( 'save_post_mwm_quiz', [ __CLASS__, 'on_save_quiz' ], 20, 2 );
 		add_action( 'save_post_mwm_worksheet', [ __CLASS__, 'on_save_worksheet' ], 20, 2 );
@@ -49,7 +52,7 @@ class MWM_Post_Types {
 
 	public static function register(): void {
 		/* ---- Taxonomies ---- */
-		register_taxonomy( 'mwm_level', [ 'mwm_lesson', 'mwm_worksheet', 'mwm_exam_date', 'mwm_pathway', 'mwm_predicted_paper' ], [
+		register_taxonomy( 'mwm_level', [ 'mwm_lesson', 'mwm_worksheet', 'mwm_exam_date', 'mwm_predicted_paper' ], [
 			'labels'            => self::labels( 'Level', 'Levels' ),
 			'public'            => true,
 			'hierarchical'      => false,
@@ -90,7 +93,7 @@ class MWM_Post_Types {
 			'meta_box_cb'       => false,
 		] );
 
-		register_taxonomy( 'mwm_board', [ 'mwm_past_paper', 'mwm_predicted_paper', 'mwm_exam_date', 'mwm_pathway' ], [
+		register_taxonomy( 'mwm_board', [ 'mwm_past_paper', 'mwm_predicted_paper', 'mwm_exam_date' ], [
 			'labels'            => self::labels( 'Exam board', 'Exam boards' ),
 			'public'            => false,
 			'show_ui'           => true,
@@ -171,17 +174,6 @@ class MWM_Post_Types {
 			'menu_icon'    => 'dashicons-calendar-alt',
 			'menu_position'=> 23,
 			'supports'     => [ 'title', 'custom-fields' ],
-			'taxonomies'   => [ 'mwm_level', 'mwm_board' ],
-		] );
-
-		register_post_type( 'mwm_pathway', [
-			'labels'       => self::labels( 'Pathway', 'Pathways' ),
-			'public'       => false,
-			'show_ui'      => true,
-			'show_in_rest' => true,
-			'menu_icon'    => 'dashicons-networking',
-			'menu_position'=> 24,
-			'supports'     => [ 'title', 'custom-fields', 'revisions' ],
 			'taxonomies'   => [ 'mwm_level', 'mwm_board' ],
 		] );
 

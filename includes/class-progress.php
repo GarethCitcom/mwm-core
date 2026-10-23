@@ -1,6 +1,6 @@
 <?php
 /**
- * Per-user learning progress: pathway ticks, saved/completed lessons, quiz scores, level/board prefs.
+ * Per-user learning progress: pathway ticks (keyed "level:topic" => subtopic keys), saved/completed lessons, quiz scores, level/board prefs.
  * Signed-out visitors keep the same shape in localStorage; the theme merges it on sign-in.
  */
 
@@ -11,6 +11,24 @@ class MWM_Progress {
 	public const META = 'mwm_progress';
 
 	public static function init(): void {}
+
+	/** Pathway ids are "level:topic" (e.g. gcse-higher:algebra); anything else is stripped. */
+	public static function pathway_key( $id ): string {
+		return (string) preg_replace( '/[^a-z0-9:_-]/', '', strtolower( (string) $id ) );
+	}
+
+	/**
+	 * Forget every user's ticks (used once when pathways changed shape; row keys no longer line up).
+	 */
+	public static function reset_all_ticks(): void {
+		global $wpdb;
+		$ids = $wpdb->get_col( $wpdb->prepare( "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = %s", self::META ) );
+		foreach ( array_map( 'intval', (array) $ids ) as $uid ) {
+			$data = self::get( $uid );
+			$data['ticks'] = [];
+			update_user_meta( $uid, self::META, $data );
+		}
+	}
 
 	public static function empty(): array {
 		return [ 'ticks' => [], 'saved' => [], 'completed' => [], 'quizzes' => [], 'prefs' => [] ];
@@ -42,7 +60,7 @@ class MWM_Progress {
 		}
 		if ( isset( $patch['ticks'] ) && is_array( $patch['ticks'] ) ) {
 			foreach ( $patch['ticks'] as $pathway => $keys ) {
-				$pathway = (string) (int) $pathway;
+				$pathway = self::pathway_key( $pathway );
 				$keys    = array_map( 'sanitize_key', (array) $keys );
 				$current['ticks'][ $pathway ] = array_values( array_unique( array_merge( (array) ( $current['ticks'][ $pathway ] ?? [] ), $keys ) ) );
 			}
@@ -80,7 +98,7 @@ class MWM_Progress {
 			}
 			if ( ! empty( $patch['remove']['ticks'] ) ) {
 				foreach ( (array) $patch['remove']['ticks'] as $pathway => $keys ) {
-					$pathway = (string) (int) $pathway;
+					$pathway = self::pathway_key( $pathway );
 					$keys    = array_map( 'sanitize_key', (array) $keys );
 					$current['ticks'][ $pathway ] = array_values( array_diff( (array) ( $current['ticks'][ $pathway ] ?? [] ), $keys ) );
 				}

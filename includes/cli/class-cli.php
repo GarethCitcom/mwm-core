@@ -35,7 +35,6 @@ class MWM_CLI {
 		$this->seed_lessons();
 		$this->seed_quiz();
 		$this->seed_exam_dates();
-		$this->seed_pathways();
 		$this->seed_past_papers();
 		$this->seed_home_featured();
 		flush_rewrite_rules();
@@ -43,8 +42,8 @@ class MWM_CLI {
 	}
 
 	private function remove_demo(): void {
-		// Explicit post types: 'any' would skip the non-public ones (pathways, exam dates).
-		$types = [ 'mwm_lesson', 'mwm_quiz', 'mwm_pathway', 'mwm_exam_date', 'mwm_past_paper' ];
+		// Explicit post types: 'any' would skip the non-public ones (exam dates).
+		$types = [ 'mwm_lesson', 'mwm_quiz', 'mwm_exam_date', 'mwm_past_paper' ];
 		$posts = get_posts( [ 'post_type' => $types, 'post_status' => 'any', 'posts_per_page' => -1, 'fields' => 'ids', 'meta_key' => self::DEMO_META, 'no_found_rows' => true ] );
 		$atts  = get_posts( [ 'post_type' => 'attachment', 'post_status' => 'any', 'posts_per_page' => -1, 'fields' => 'ids', 'meta_key' => self::DEMO_META, 'no_found_rows' => true ] );
 		foreach ( array_unique( array_merge( $posts, $atts ) ) as $id ) {
@@ -321,135 +320,6 @@ class MWM_CLI {
 			}
 		}
 		WP_CLI::log( '  exam dates seeded' );
-	}
-
-	/**
-	 * Pathway rows: [topic, worksheet, quiz, note, comingSoon]. Rows without a real lesson get a stub lesson.
-	 */
-	private function seed_pathways(): void {
-		$higher = [
-			'Number' => [
-				[ 'Fractions, decimals and percentages', true, true ],
-				[ 'Percentage change and reverse percentages', true, false ],
-				[ 'Standard form', false, false ],
-				[ 'Surds', true, true, 'Needs: Simplifying expressions' ],
-				[ 'Bounds and error intervals', true, false ],
-			],
-			'Algebra' => [
-				[ 'Expanding and factorising', true, true ],
-				[ 'Solving linear equations', true, false ],
-				[ 'Linear simultaneous equations', true, false ],
-				[ 'Quadratic simultaneous equations', true, true, 'Needs: Linear simultaneous equations' ],
-				[ 'Completing the square', false, false, '', false, 'Solving quadratics by completing the square' ],
-				[ 'Inequalities', true, false ],
-				[ 'Sequences and the nth term', true, true ],
-				[ 'Algebraic proof', false, false, '', true ],
-			],
-			'Ratio & Proportion' => [
-				[ 'Ratio and sharing in a ratio', true, true ],
-				[ 'Direct and inverse proportion', true, false ],
-				[ 'Compound measures', false, false ],
-				[ 'Converting units', true, false ],
-				[ 'Best buy problems', false, false ],
-			],
-			'Geometry & Measures' => [
-				[ 'Angles and parallel lines', true, false ],
-				[ 'Circumference and area of circles', true, false ],
-				[ 'Volume of prisms and cuboids', false, true ],
-				[ 'Pythagoras’ theorem', true, true ],
-				[ 'Trigonometry in right-angled triangles', true, true, 'Needs: Pythagoras’ theorem' ],
-				[ 'Sine and cosine rules', false, false ],
-				[ 'Vectors', true, false ],
-				[ 'Circle theorems', true, false ],
-			],
-			'Probability' => [
-				[ 'Probability basics and sample spaces', true, false ],
-				[ 'Tree diagrams', true, true ],
-				[ 'Venn diagrams', false, false ],
-			],
-			'Statistics' => [
-				[ 'Averages and spread', true, true ],
-				[ 'Cumulative frequency and box plots', true, false ],
-				[ 'Histograms', false, false ],
-			],
-		];
-		$foundation = [
-			'Number' => [
-				[ 'Place value and rounding', true, false ],
-				[ 'Fractions of amounts', true, true ],
-				[ 'Percentages of amounts', true, false ],
-				[ 'Rounding decimals', false, false ],
-			],
-			'Ratio & Proportion' => [
-				[ 'Sharing in a ratio', true, false ],
-				[ 'Converting miles and kilometres', true, false ],
-			],
-			'Geometry & Measures' => [
-				[ 'Perimeter and area', true, true ],
-				[ 'Circumference of a circle', true, false ],
-				[ 'Volume of a cuboid', false, true ],
-			],
-			'Statistics' => [
-				[ 'Averages from a list', true, false ],
-			],
-		];
-		$plan = [
-			[ '2027-05-03', 'Algebra', 'Algebra' ], [ '2027-05-10', 'Mixed practice', 'Mixed + P1' ], [ '2027-05-17', 'Ratio & Proportion', 'Ratio' ],
-			[ '2027-05-24', 'Geometry & Measures', 'Geometry' ], [ '2027-05-31', 'Probability & Statistics', 'Prob & Stats' ], [ '2027-06-07', 'Past papers', 'Past papers' ], [ '2027-06-14', 'Rest and light recap', 'Rest' ],
-		];
-		$this->upsert_pathway( 'GCSE Higher revision pathway', 'gcse-higher', $higher, true, $plan );
-		$this->upsert_pathway( 'GCSE Foundation revision pathway', 'gcse-foundation', $foundation, false, $plan );
-		WP_CLI::log( '  pathways seeded' );
-	}
-
-	private function topic_slug_for_group( string $group ): string {
-		$map = [ 'Number' => 'number', 'Algebra' => 'algebra', 'Ratio & Proportion' => 'ratio-proportion', 'Geometry & Measures' => 'geometry-measures', 'Probability' => 'probability', 'Statistics' => 'statistics' ];
-		return $map[ $group ] ?? 'number';
-	}
-
-	private function upsert_pathway( string $title, string $level, array $groups, bool $complete, array $plan ): void {
-		$id = $this->find_demo( 'mwm_pathway', $title );
-		if ( ! $id ) {
-			$id = (int) wp_insert_post( [ 'post_type' => 'mwm_pathway', 'post_status' => 'publish', 'post_title' => $title ] );
-			update_post_meta( $id, self::DEMO_META, 1 );
-		}
-		wp_set_object_terms( $id, $level, 'mwm_level' );
-		wp_set_object_terms( $id, [], 'mwm_board' );
-		update_post_meta( $id, 'complete', $complete ? 1 : 0 );
-		$field_groups = [];
-		$stub_date = strtotime( '2026-06-01 09:00:00' );
-		foreach ( $groups as $name => $rows ) {
-			$frows = [];
-			foreach ( $rows as $row ) {
-				[ $topic, $ws, $quiz ] = $row;
-				$note = $row[3] ?? '';
-				$soon = $row[4] ?? false;
-				$lesson_title = $row[5] ?? $topic;
-				$lesson_id = 0;
-				if ( ! $soon ) {
-					$lesson_id = $this->find_demo( 'mwm_lesson', $lesson_title );
-					if ( ! $lesson_id ) {
-						$stub_date -= 86400;
-						$lesson_id = $this->upsert_lesson( [
-							'title' => $lesson_title, 'level' => $level, 'topic' => $this->topic_slug_for_group( $name ), 'seconds' => 480, 'format' => 'lesson',
-							'worksheet' => $ws ? 200 : 0, 'quiz' => $quiz,
-						], gmdate( 'Y-m-d H:i:s', $stub_date ) );
-					} else {
-						// Real lesson: make sure its resources match the pathway row.
-						if ( $ws && ! get_post_meta( $lesson_id, 'worksheet', true ) ) {
-							update_post_meta( $lesson_id, 'worksheet', $this->make_pdf( $lesson_title . ' — worksheet', 200 * 1024, $lesson_id ) );
-						}
-						if ( $quiz && ! mwm_lesson_quiz( $lesson_id ) ) {
-							$this->generic_quiz( $lesson_id, $lesson_title );
-						}
-					}
-				}
-				$frows[] = [ 'topic' => $topic, 'lesson' => $lesson_id ?: '', 'note' => $note, 'coming_soon' => $soon ? 1 : 0 ];
-			}
-			$field_groups[] = [ 'name' => $name, 'rows' => $frows ];
-		}
-		update_field( 'field_mwm_pw_groups', $field_groups, $id );
-		update_field( 'field_mwm_pw_plan', array_map( static fn( $w ) => [ 'week_commencing' => $w[0], 'focus' => $w[1], 'short' => $w[2] ?? '' ], $plan ), $id );
 	}
 
 	private function seed_past_papers(): void {

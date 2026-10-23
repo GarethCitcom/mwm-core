@@ -1403,6 +1403,62 @@ html[data-theme="dark"] .mwm-tag--warn {
 	border-color: #5C4220;
 }
 
+/* Pathway editor (one level + topic): rows are subtopics in revision order. */
+.st-h1__muted {
+	font-weight: 400;
+	color: var(--muted);
+}
+.st-pw-row__name {
+	font-size: 16px;
+	line-height: 1.5;
+	font-weight: 600;
+}
+.st-pw-row__lessons {
+	margin-top: 2px;
+	font-size: 14px;
+	line-height: 1.5;
+	color: var(--muted);
+}
+.st-pw-row__lessons.is-soon {
+	font-style: italic;
+}
+.st-pw-row__note {
+	margin-top: 8px;
+	max-width: 520px;
+}
+.st-pw-row.is-unplaced {
+	background: var(--tint);
+	border-radius: 12px;
+	padding-left: 12px;
+	padding-right: 12px;
+	margin-left: -12px;
+	margin-right: -12px;
+}
+.st-textarea--paste {
+	margin-top: 8px;
+	font-family: inherit;
+	font-size: 14px;
+	width: 100%;
+	box-sizing: border-box;
+}
+.st-saved {
+	color: var(--link);
+	font-weight: 600;
+}
+.st-prompt__details summary {
+	cursor: pointer;
+	margin-top: 8px;
+	font-size: 13px;
+	color: var(--muted);
+}
+.st-prompt__details summary:hover {
+	color: var(--link);
+}
+.st-prompt__text {
+	max-height: 320px;
+	overflow: auto;
+}
+
 /* Past paper worksheet links */
 .st-chips--12 {
 	margin-top: 12px;
@@ -1441,22 +1497,6 @@ html[data-theme="dark"] .mwm-tag--warn {
 .st-input--sm {
 	height: 40px;
 	font-size: 14px;
-}
-.st-pw-group {
-	margin-top: 20px;
-	padding: 16px;
-	border: 1px solid var(--border);
-	border-radius: 12px;
-	background: var(--tint);
-}
-.st-pw-group__head {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-}
-.st-pw-group__name {
-	font-weight: 600;
-	max-width: 420px;
 }
 .st-pw-row {
 	display: flex;

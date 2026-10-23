@@ -3,7 +3,7 @@
  * Plugin Name:       MWM Core
  * Plugin URI:        https://mathswithmelissa.co.uk
  * Description:       Data model, REST API, YouTube playlist sync and the front-end Studio for Maths with Melissa.
- * Version:           1.1.0
+ * Version:           1.2.0
  * Requires at least: 6.5
  * Requires PHP:      8.1
  * Author:            Maths with Melissa
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MWM_CORE_VERSION', '1.1.0' );
+define( 'MWM_CORE_VERSION', '1.2.0' );
 define( 'MWM_CORE_FILE', __FILE__ );
 define( 'MWM_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MWM_CORE_URL', plugin_dir_url( __FILE__ ) );

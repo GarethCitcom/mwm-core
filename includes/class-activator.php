@@ -25,13 +25,31 @@ class MWM_Activator {
 	 * so nobody has to deactivate and reactivate. Keyed on the plugin version.
 	 */
 	public static function maybe_upgrade(): void {
-		if ( get_option( 'mwm_core_version' ) === MWM_CORE_VERSION ) {
+		$from = (string) get_option( 'mwm_core_version', '0' );
+		if ( $from === MWM_CORE_VERSION ) {
 			return;
 		}
 		self::add_caps();
 		self::create_pages();
+		if ( version_compare( $from, '1.2.0', '<' ) ) {
+			self::retire_old_pathways();
+		}
 		flush_rewrite_rules();
 		update_option( 'mwm_core_version', MWM_CORE_VERSION );
+	}
+
+	/**
+	 * 1.2.0: pathways are built from lessons (one per level + topic) instead of hand-made posts.
+	 * The old posts go, and every tick goes with them: the new rows are keyed by subtopic, not position.
+	 */
+	private static function retire_old_pathways(): void {
+		global $wpdb;
+		$ids = $wpdb->get_col( "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'mwm_pathway'" );
+		foreach ( array_map( 'intval', (array) $ids ) as $id ) {
+			wp_delete_post( $id, true );
+		}
+		MWM_Progress::reset_all_ticks();
+		mwm_flush_pathway_cache();
 	}
 
 	public static function deactivate(): void {
