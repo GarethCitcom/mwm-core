@@ -1185,6 +1185,49 @@ function mwm_next_in_pathway( int $lesson_id, string $level ): ?array {
 }
 
 /**
+ * The pathway rows a lesson belongs to: one per level the lesson has, with the pathway id, the row key and
+ * the ids of every lesson in that row, so a lesson page can tick the row once all of them are complete.
+ * Cheap (term lookups and one ids-only query per level); no pathway is assembled.
+ */
+function mwm_lesson_pathway_rows( int $lesson_id ): array {
+	$tt = mwm_lesson_topic_terms( $lesson_id );
+	if ( ! $tt['topic'] ) {
+		return [];
+	}
+	$sub  = $tt['subtopic'];
+	$rows = [];
+	foreach ( mwm_post_levels( $lesson_id ) as $level ) {
+		$siblings = [ $lesson_id ];
+		if ( $sub ) {
+			$ids = get_posts( [
+				'post_type'      => 'mwm_lesson',
+				'post_status'    => 'publish',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'no_found_rows'  => true,
+				'tax_query'      => [
+					'relation' => 'AND',
+					[ 'taxonomy' => 'mwm_level', 'field' => 'slug', 'terms' => $level ],
+					[ 'taxonomy' => 'mwm_topic', 'field' => 'term_id', 'terms' => (int) $sub->term_id, 'include_children' => false ],
+					[ 'taxonomy' => 'mwm_format', 'field' => 'slug', 'terms' => 'lesson' ],
+				],
+			] );
+			$siblings = array_values( array_unique( array_merge( [ $lesson_id ], array_map( 'intval', (array) $ids ) ) ) );
+		}
+		$rows[] = [
+			'pathway'    => mwm_pathway_id( $level, $tt['topic']->slug ),
+			'key'        => $sub ? 's' . (int) $sub->term_id : 'l' . $lesson_id,
+			'level'      => $level,
+			'level_name' => mwm_level_name( $level ),
+			'topic_name' => wp_specialchars_decode( $tt['topic']->name ),
+			'url'        => mwm_pathway_url( $level, $tt['topic']->slug ),
+			'lessons'    => $siblings,
+		];
+	}
+	return $rows;
+}
+
+/**
  * The suggested week-by-week revision plan for a level (shown on the exam calendar).
  * Rows: [ 'week' => Y-m-d (Monday), 'focus' => '', 'short' => '' ], sorted by week.
  */
