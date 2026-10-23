@@ -1037,6 +1037,7 @@ function mwm_pathway( string $level, string $topic_slug ): ?array {
 			'has_worksheet' => $c['has_worksheet'],
 			'worksheet_url' => $c['worksheet_url'],
 			'has_quiz'      => $c['has_quiz'],
+			'quiz_id'       => $c['quiz_id'],
 			'quiz_url'      => $c['quiz_url'],
 		];
 		if ( $sid ) {
