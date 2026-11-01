@@ -178,7 +178,7 @@
 
 	/* ---------------------------------------------------------------- state */
 	function freshLesson() {
-		return { id: 0, step: 1, yt: '', video: null, videoError: '', finding: false, title: '', levels: ['gcse-higher'], topic: 'algebra', subtopic: '', ws: null, ans: null, quizText: '', quizResult: null, quizImages: {}, copied: false, publishing: false, published: null, editingTitle: '', publishError: '' };
+		return { id: 0, step: 1, yt: '', video: null, videoError: '', finding: false, title: '', levels: ['gcse-higher'], topic: 'algebra', subtopic: '', ws: null, ans: null, quizText: '', quizResult: null, quizImages: {}, copied: false, publishing: false, published: null, editingTitle: '', publishError: '', wsLink: null, wsPage: '' };
 	}
 	function freshPaper(keep) {
 		var now = new Date();
@@ -190,12 +190,12 @@
 		return { id: 0, board: keep.board || 'edexcel', level: keep.level || 'gcse-higher', year: keep.year || (now.getMonth() >= 8 ? now.getFullYear() + 1 : now.getFullYear()), name: '', calculator: true, qp: null, sol: null, worksheets: [], wsPdfs: [], published: null, publishing: false, error: '', editingTitle: '' };
 	}
 	function freshWorksheet() {
-		return { id: 0, title: '', level: 'gcse-foundation', topic: 'number', subtopic: '', pdf: null, ans: null, desc: '', published: null, publishing: false, error: '', editingTitle: '' };
+		return { id: 0, title: '', level: 'gcse-foundation', topic: 'number', subtopic: '', pdf: null, ans: null, desc: '', published: null, publishing: false, error: '', editingTitle: '', lesson: null };
 	}
 	var S = {
 		view: B.view || 'dash',
 		playlists: B.playlists, sync: B.sync, synced: false, syncing: false, recent: B.recent,
-		content: B.content, kindFilter: 'All', issueFilter: '', levelFilter: '', topicFilter: '', boardFilter: '', search: '', confirmId: null, lastDeleted: null, levelBusy: null,
+		content: B.content, kindFilter: 'All', issueFilter: '', levelFilter: '', topicFilter: '', boardFilter: '', search: '', confirmId: null, lastDeleted: null, levelBusy: null, linking: null, picks: {},
 		lesson: freshLesson(),
 		pp: freshPaper({}),
 		pr: freshPredicted({}),
@@ -290,7 +290,7 @@
 		}
 		if (L.step === 3) {
 			html += '<div class="st-panel"><h2>Add the practice bits (optional)</h2><p class="st-panel__sub">Skip anything that isn’t ready — the site never shows an empty button, just a friendly “not yet” note.</p>' +
-				fileRow('Worksheet PDF', L.ws ? '✓ ' + L.ws.filename + ' added — it gets its own worksheet page too' : 'No worksheet yet — students will see a friendly note instead of a button.', !!L.ws, 'ws', 'st-filerow--first') +
+				worksheetBox(L) +
 				fileRow('Worked answers PDF', L.ans ? '✓ ' + L.ans.filename + ' added' : 'Optional — appears behind “Reveal answers”.', !!L.ans, 'ans', '') +
 				'<div class="st-quiz"><div class="st-filerow__label">Quiz <span>(optional)</span></div><div class="st-quiz__sub">Ask ChatGPT to write one for you: copy the instructions below — they’re already filled in for this lesson — then paste back what it gives you.</div>' +
 				'<div class="st-prompt"><div class="st-prompt__head"><span class="st-prompt__title">Instructions for ChatGPT</span><button type="button" class="st-copy" data-copy>' + (L.copied ? '✓ Copied' : 'Copy') + '</button></div><div class="st-prompt__text">' + esc(quizPrompt()) + '</div></div>' +
@@ -315,11 +315,12 @@
 				html += '<div class="st-success"><span class="st-success__icon">' + icon('tick') + '</span><h2>It’s live!</h2><p>Your lesson is on the site now — in Browse, and in the pathway if the topic belongs to one.</p>' +
 					'<div class="st-success__actions"><a href="' + esc(L.published.url) + '" class="mwm-btn mwm-btn--primary">See the lesson</a><button type="button" class="mwm-btn mwm-btn--secondary" data-reset-lesson>Add another</button></div></div>';
 			} else {
-				var extras = [L.ws ? 'Worksheet' : '', L.ans ? 'Answers' : '', L.quizResult && L.quizResult.ok ? 'Quiz (' + L.quizResult.questions.length + ' questions)' : ''].filter(Boolean);
+				var extras = [L.ws || L.wsLink ? 'Worksheet' : '', L.ans || (L.wsLink && L.wsLink.has_answers) ? 'Answers' : '', L.quizResult && L.quizResult.ok ? 'Quiz (' + L.quizResult.questions.length + ' questions)' : ''].filter(Boolean);
 				var mins = L.video && L.video.minutes_label ? L.video.minutes_label : '';
 				html += '<div class="st-panel"><h2>Check it, then publish</h2><p class="st-panel__sub">This is exactly how students will see it.</p>' +
 					'<div class="st-preview">' + thumbBtn(L.video ? L.video.thumbnail : '', 'st-preview__thumb', L.video ? L.video.title : '', L.video ? watchUrl(L.video.id) : '') + '<div class="st-preview__body"><div class="mwm-tags">' + tag(levelsLabel(L.levels), 'mwm-tag--higher') + tag(topicName(L.subtopic || L.topic), 'mwm-tag--outline') + '</div>' +
 					'<div class="st-preview__title">' + esc(lessonTitle()) + '</div><div class="st-preview__meta">' + esc([mins].concat(extras).filter(Boolean).join(' · ')) + '</div></div></div>' +
+					(!L.ws && !L.wsLink ? '<div class="st-nudge">' + tag('No worksheet', 'mwm-tag--warn mwm-tag--sm') + '<span>This lesson has no worksheet. That’s fine, but if you have one, <button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-goto-step="3">add it before you publish</button>.</span></div>' : '') +
 					'<button type="button" class="mwm-btn mwm-btn--primary mwm-btn--lg st-publish" data-publish' + (L.publishing ? ' disabled' : '') + '>' + (L.publishing ? 'Publishing…' : (L.id ? 'Publish changes' : 'Publish lesson')) + '</button>' +
 					(L.publishError ? '<p class="st-error">' + esc(L.publishError) + '</p>' : '') +
 					'<p class="st-note">It goes live straight away — and you can take it down again just as quickly.</p></div>';
@@ -331,6 +332,62 @@
 				(canNext ? '<button type="button" class="mwm-btn mwm-btn--primary" data-next>' + (L.step === 3 ? 'Check it over' : 'Next') + '</button>' : '') + '</div>';
 		}
 		return html;
+	}
+
+	/* The worksheet step of the lesson wizard. Boxed out and highlighted so it isn't missed among the other optional bits,
+	   with two ways in: upload a PDF, or pick a worksheet that's already on the site. */
+	function worksheetBox(L) {
+		var state = L.wsLink ? 'linked' : (L.ws ? 'file' : 'none');
+		var html = '<div class="st-wsbox' + (state === 'none' ? ' is-empty' : ' is-ok') + '"><div class="st-wsbox__head"><span class="st-wsbox__icon">' + icon('worksheet') + '</span><div><h3 class="st-wsbox__title">Worksheet <span>(optional, but most lessons have one)</span></h3><p class="st-wsbox__sub">Students get a “Worksheet” button on the lesson page, and it gets its own worksheet page too.</p></div></div>';
+		if (state === 'file') {
+			html += '<div class="st-wsbox__status is-ok">' + icon('tick') + '<span><strong>' + esc(L.ws.filename) + '</strong>' + (L.wsPage ? ' is on this lesson, on the worksheet page “' + esc(L.wsPage) + '”.' : ' added.') + '</span></div>' +
+				'<div class="st-wsbox__actions"><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="ws">' + (L.wsPage ? 'Swap the PDF' : 'Choose a different PDF') + '</label></div>';
+		} else if (state === 'linked') {
+			html += '<div class="st-wsbox__status is-ok">' + icon('tick') + '<span>Linked to <strong>' + esc(L.wsLink.title) + '</strong>' + (L.wsLink.has_answers ? ', which already has worked answers' : '') + '. It goes on this lesson when you publish.</span></div>' +
+				'<div class="st-wsbox__actions"><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-wslink-clear>Choose a different one</button></div>';
+		} else {
+			html += '<div class="st-wsbox__status is-missing">' + tag('No worksheet yet', 'mwm-tag--warn mwm-tag--sm') + '<span>Students will see a friendly “not yet” note instead of a button.</span></div>' +
+				'<div class="st-wsbox__choices"><div class="st-wsbox__choice"><div class="st-wsbox__choicelabel">Upload a new PDF</div><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="ws">Choose PDF</label></div>' +
+				'<div class="st-wsbox__or">or</div>' +
+				'<div class="st-wsbox__choice st-wsbox__choice--grow"><div class="st-wsbox__choicelabel">Use one that’s already on the site</div>' + spick('worksheet', 'wiz-ws', 'Search worksheets by name, e.g. “ratio”…') + '</div></div>';
+		}
+		return html + '</div>';
+	}
+	/* Inline search box for picking a lesson or a worksheet that's already on the site. `key` says what the pick is for. */
+	function spick(kind, key, placeholder) {
+		return '<div class="st-picker st-picker--inline" data-spick="' + kind + '" data-spick-key="' + key + '"><div class="st-picker__control"><input type="text" class="st-input st-picker__input" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-label="' + esc(placeholder) + '" placeholder="' + esc(placeholder) + '" autocomplete="off" data-spick-input><span class="st-picker__caret" aria-hidden="true">' + icon('search') + '</span></div><div class="st-picker__list" role="listbox" hidden data-spick-list></div></div>';
+	}
+	function spickSearch(box, q) {
+		var list = box.querySelector('[data-spick-list]'), kind = box.getAttribute('data-spick'), key = box.getAttribute('data-spick-key');
+		var mine = ++wsSearchSeq;
+		q = q.trim();
+		if (!q) { list.setAttribute('hidden', ''); box.classList.remove('is-open'); return; }
+		list.innerHTML = '<div class="st-picker__empty">Searching…</div>'; list.removeAttribute('hidden'); box.classList.add('is-open');
+		// Worksheets already on a lesson aren't offered: moving one would quietly empty another lesson's page.
+		var path = kind === 'lesson' ? 'lessons?per_page=8&format=lesson&search=' : 'worksheets?per_page=8&unlinked=1&search=';
+		api(path + encodeURIComponent(q)).then(function (res) {
+			if (mine !== wsSearchSeq) { return; }
+			var items = res.items || [];
+			items.forEach(function (it) { S.picks[kind + ':' + it.id] = it; });
+			list.innerHTML = items.length
+				? items.map(function (it) {
+					var hint = kind === 'lesson' ? [it.level, it.subtopic || it.topic, it.has_worksheet ? 'already has a worksheet' : ''] : [it.level, it.subtopic || it.topic, it.has_answers ? 'with answers' : ''];
+					return '<button type="button" class="st-picker__opt" role="option" data-spick-pick="' + it.id + '" data-spick-kind="' + kind + '" data-spick-key="' + esc(key) + '">' + (it.thumb ? '<span class="st-picker__thumb" style="background-image:url(' + esc(it.thumb) + ')"></span>' : '') + esc(it.title) + '<span class="st-picker__hint">' + esc(hint.filter(Boolean).join(' · ')) + '</span></button>';
+				}).join('')
+				: '<div class="st-picker__empty">' + (kind === 'lesson' ? 'No lessons match “' + esc(q) + '”.' : 'No spare worksheets match “' + esc(q) + '”. Ones already on a lesson aren’t offered here.') + '</div>';
+		}).catch(function () { list.innerHTML = '<div class="st-picker__empty">Couldn’t search just now — try again.</div>'; });
+	}
+	/* Put worksheet `wsId` on lesson `lessonId` (0 takes it off). The rows are patched straight away; refreshContent() brings the full picture. */
+	function linkWorksheet(wsId, lessonId) {
+		root.classList.add('st-busy');
+		api('studio/worksheets/' + wsId + '/lesson', { method: 'POST', body: { lesson: lessonId } }).then(function (d) {
+			root.classList.remove('st-busy'); S.linking = null;
+			S.content.forEach(function (r) {
+				if (r.kind === 'Worksheet' && r.id === wsId) { r.lesson_id = lessonId; r.flags = (r.flags || []).filter(function (f) { return f !== 'unlinked'; }); }
+				if (r.kind === 'Lesson' && r.id === lessonId) { r.flags = (r.flags || []).filter(function (f) { return f !== 'no_worksheet'; }); }
+			});
+			toast(d.message); render(); refreshContent();
+		}).catch(function (err) { root.classList.remove('st-busy'); toast(err.message); });
 	}
 
 	function fileRow(label, status, ok, key, cls) {
@@ -463,9 +520,21 @@
 					var tip = check ? 'Click to confirm this level' : (on ? (rl.length > 1 ? 'Click to take this level off' : '') : 'Click to add this level');
 					return '<button type="button" class="st-qlevel' + (on ? ' is-on' : '') + (check ? ' is-check' : '') + (on && rl.length === 1 && !check ? ' is-only' : '') + '" aria-pressed="' + (on ? 'true' : 'false') + '" data-qlevel="' + esc(l.slug) + '" data-id="' + r.id + '"' + (S.levelBusy === r.id ? ' disabled' : '') + (tip ? ' title="' + tip + '"' : '') + '>' + esc(l.name.replace(/^GCSE /, '')) + (check ? ' ✓' : '') + '</button>';
 				}).join('') + (!rl.length ? '<span class="st-qlevels__hint">not set yet</span>' : (flagged ? '<span class="st-qlevels__hint">click to confirm, or pick the right one</span>' : '')) + '</div>' : '';
-				return '<div class="st-list__row st-list__row--16">' + listMedia(r) + '<div class="st-list__main"><div class="st-list__name">' + esc(r.title) + '</div><div class="st-list__sub">' + esc(r.meta) + '</div>' + (flags ? '<div class="st-list__flags">' + flags + '</div>' : '') + quick + '</div>' + tag(r.kind, 'mwm-tag--outline mwm-tag--sm') + actions + '</div>';
+				return '<div class="st-list__row st-list__row--16">' + listMedia(r) + '<div class="st-list__main"><div class="st-list__name">' + esc(r.title) + '</div><div class="st-list__sub">' + esc(r.meta) + '</div>' + (flags ? '<div class="st-list__flags">' + flags + '</div>' : '') + quick + linkRow(r) + '</div>' + tag(r.kind, 'mwm-tag--outline mwm-tag--sm') + actions + '</div>';
 			}).join('') : '<div class="st-list__row"><span class="mwm-meta">' + (S.issueFilter ? 'Nothing needs attention here — nice.' : (filtersOn() ? 'Nothing matches those filters — try clearing one.' : 'Nothing here yet.')) + '</span></div>') + '</div>' +
 			'<p class="st-note st-note--16">Removing a lesson never deletes your video — it stays safe on YouTube.</p>';
+	}
+
+	/* A lesson with no worksheet, or a worksheet on no lesson, can be linked up right here on its row: no upload, no wizard. */
+	function linkRow(r) {
+		var isLesson = r.kind === 'Lesson', flags = r.flags || [];
+		if (!(isLesson ? flags.indexOf('no_worksheet') > -1 : (r.kind === 'Worksheet' && flags.indexOf('unlinked') > -1))) { return ''; }
+		if (S.linking && S.linking.id === r.id && S.linking.kind === r.kind) {
+			return '<div class="st-linkrow"><div class="st-linkrow__head"><span class="st-linkrow__label">' + (isLesson ? 'Which worksheet goes with this lesson?' : 'Which lesson does this worksheet go with?') + '</span><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-link-cancel>Cancel</button></div>' +
+				spick(isLesson ? 'worksheet' : 'lesson', isLesson ? 'row-ws' : 'row-lesson', isLesson ? 'Search worksheets by name, e.g. “ratio”…' : 'Search lessons by name, e.g. “ratio”…') +
+				'<p class="st-linkrow__note">' + (isLesson ? 'Only worksheets not yet on a lesson are offered. To upload a new PDF instead, choose Edit and go to the Practice step.' : 'If that lesson already has a worksheet, this one takes its place and the old one stays on the site on its own page.') + '</p></div>';
+		}
+		return '<div class="st-linkrow st-linkrow--cta"><button type="button" class="st-smallbtn st-smallbtn--link" data-link-start="' + r.id + '" data-link-kind="' + esc(r.kind) + '">' + icon('worksheet') + (isLesson ? 'Link a worksheet' : 'Link to a lesson') + '</button><span class="st-linkrow__hint">' + (isLesson ? 'Pick one that’s already on the site, no upload needed.' : 'Students then find it on the lesson page too.') + '</span></div>';
 	}
 
 	/* Left-hand cell on a content row: the video thumbnail (click to enlarge, play badge to YouTube) or an icon for everything else. */
@@ -485,13 +554,13 @@
 			'<h1 class="st-h1 st-h1--after-back">' + (W.id ? 'Edit a worksheet' : 'Add a worksheet') + '</h1>';
 		if (W.id) { html += '<div class="st-banner">You’re editing <strong>' + esc(W.editingTitle) + '</strong> — change what you need, then publish again.</div>'; }
 		if (W.published) {
-			html += '<div class="st-success"><span class="st-success__icon">' + icon('tick') + '</span><h2>It’s live!</h2><p>The worksheet has its own page now — share the link with students, or find it under Worksheets.</p>' +
+			html += '<div class="st-success"><span class="st-success__icon">' + icon('tick') + '</span><h2>It’s live!</h2><p>The worksheet has its own page now' + (W.lesson ? ', and it’s on the lesson “' + esc(W.lesson.title) + '” as well' : '') + '. Share the link with students, or find it under Worksheets.</p>' +
 				'<div class="st-success__actions"><a href="' + esc(W.published.url) + '" class="mwm-btn mwm-btn--primary">See the worksheet</a><button type="button" class="mwm-btn mwm-btn--secondary" data-reset-ws>Add another</button></div>' +
 				'<p class="st-note st-note--16" style="text-align:center">Link to give out: <a href="' + esc(W.published.url) + '">' + esc(W.published.url) + '</a></p></div>';
 			return html;
 		}
 		var topic = B.topics.filter(function (t) { return t.slug === W.topic; })[0];
-		html += '<p class="st-intro">For a worksheet that isn’t part of a lesson. If it goes with a video, add it through “Add a lesson” instead and it gets linked up for you.</p>' +
+		html += '<p class="st-intro">A worksheet with its own page. If it goes with one of your video lessons, link it further down and it appears on that lesson’s page too.</p>' +
 			'<div class="st-panel"><h2>What’s it called?</h2><p class="st-panel__sub">Students see this as the page title, so keep it plain — “Sharing in a ratio” rather than a file name.</p>' +
 			'<div class="st-inputrow"><input type="text" class="st-input" value="' + esc(W.title) + '" placeholder="e.g. Sharing in a ratio" aria-label="Worksheet name" data-ws-title></div>' +
 			'<div class="st-label st-label--24">Level</div><div class="st-chips">' + B.levels.map(function (l) { return chip(l.name, W.level === l.slug, { wslevel: l.slug }); }).join('') + '</div>' +
@@ -504,6 +573,10 @@
 			'<div class="st-filerow"><div><div class="st-filerow__label">Worked answers PDF <span>(optional)</span></div><div class="st-filerow__status' + (W.ans ? ' is-ok' : '') + '">' + esc(W.ans ? '✓ ' + W.ans.filename + ' added' : 'Optional — appears behind “Reveal answers”.') + '</div></div><label class="st-filebtn"><input type="file" accept="application/pdf" data-pdf="wsans">Choose PDF</label></div>' +
 			'<div class="st-label st-label--24">A line about it <span style="font-weight:400;color:var(--muted)">(optional)</span></div>' +
 			'<textarea class="st-textarea" rows="3" style="font-family:inherit;font-size:14px" placeholder="e.g. Ten exam-style questions on sharing in a ratio, with a tricky one at the end." aria-label="Description" data-ws-desc>' + esc(W.desc) + '</textarea></div>' +
+			'<div class="st-panel"><h2>Does it go with a lesson? <span class="st-panel__opt">(optional)</span></h2><p class="st-panel__sub">Link it and students get a “Worksheet” button on that lesson’s page as well as this worksheet’s own page.</p>' +
+			(W.lesson
+				? '<div class="st-wsbox__status is-ok">' + icon('tick') + '<span>Goes with <strong>' + esc(W.lesson.title) + '</strong>' + (W.lesson.has_worksheet ? '. That lesson’s current worksheet will be swapped for this one' : '') + '.</span><button type="button" class="mwm-linkbtn mwm-linkbtn--sm" data-ws-lesson-clear>Change</button></div>'
+				: spick('lesson', 'ws-lesson', 'Search your lessons by name, e.g. “ratio”…')) + '</div>' +
 			'<div class="st-panel"><h2>Check it, then publish</h2>' +
 			'<div class="st-preview"><span class="st-preview__thumb mwm-thumb--doc" style="display:flex;align-items:center;justify-content:center"><span class="mwm-thumb__doc">' + icon('worksheet') + '<span>PDF</span></span></span><div class="st-preview__body"><div class="mwm-tags">' + tag(levelName(W.level), 'mwm-tag--higher') + tag(topicName(W.subtopic || W.topic), 'mwm-tag--outline') + '</div>' +
 			'<div class="st-preview__title">' + esc(W.title || 'Untitled worksheet') + '</div><div class="st-preview__meta">' + esc([W.pdf ? W.pdf.label : 'No PDF yet', W.ans ? 'Answers' : ''].filter(Boolean).join(' · ')) + '</div></div></div>' +
@@ -1172,7 +1245,8 @@
 	function publishLesson() {
 		var L = S.lesson;
 		L.publishing = true; L.publishError = ''; render();
-		var body = { id: L.id, youtube_url: L.video ? L.video.id : L.yt, title: lessonTitle(), levels: L.levels, level: L.levels[0], topic: L.subtopic || L.topic, worksheet: L.ws ? L.ws.id : 0, answers: L.ans ? L.ans.id : 0, seconds: L.video ? L.video.seconds : undefined, thumbnail: L.video ? L.video.thumbnail : undefined };
+		var body = { id: L.id, youtube_url: L.video ? L.video.id : L.yt, title: lessonTitle(), levels: L.levels, level: L.levels[0], topic: L.subtopic || L.topic, answers: L.ans ? L.ans.id : 0, seconds: L.video ? L.video.seconds : undefined, thumbnail: L.video ? L.video.thumbnail : undefined };
+		if (L.wsLink) { body.worksheet_post = L.wsLink.id; } else { body.worksheet = L.ws ? L.ws.id : 0; }
 		var quiz = quizPayload();
 		if (quiz !== undefined) { body.quiz = quiz; }
 		api('studio/lessons', { method: 'POST', body: body }).then(function (card) {
@@ -1214,6 +1288,7 @@
 				L.topic = c.topic_slug || 'number'; L.subtopic = c.subtopic_slug || '';
 				L.video = { id: c.youtube_id, title: c.title, thumbnail: c.thumb, seconds: c.seconds, duration_label: '', minutes_label: c.duration, published_label: c.published_label ? '' : '', existing_id: c.id };
 				L.ws = c.worksheet ? { id: c.worksheet.id, filename: c.worksheet.name, url: c.worksheet.url } : null;
+				L.wsPage = c.worksheet ? (c.worksheet_title || '') : '';
 				L.ans = c.answers ? { id: c.answers.id, filename: c.answers.name, url: c.answers.url } : null;
 				L.quizText = c.quiz_json || '';
 				L.step = it.kind === 'Lesson' ? 2 : 3;
@@ -1250,7 +1325,11 @@
 			pickerPaint(box, q); pickerOpen(box, true);
 		}
 	});
+	// Choosing from a picker list mustn't blur the search box first, or the list closes before the click lands (Safari doesn't focus buttons on click).
+	root.addEventListener('mousedown', function (e) { if (e.target.closest && e.target.closest('.st-picker__opt')) { e.preventDefault(); } });
 	root.addEventListener('focusout', function (e) {
+		var sbox = e.target.closest && e.target.closest('[data-spick]');
+		if (sbox && !(e.relatedTarget && sbox.contains(e.relatedTarget))) { sbox.querySelector('[data-spick-list]').setAttribute('hidden', ''); sbox.classList.remove('is-open'); return; }
 		var lpbox = e.target.closest && e.target.closest('[data-lpick-box]');
 		if (lpbox && !(e.relatedTarget && lpbox.contains(e.relatedTarget))) { lpbox.querySelector('[data-lpick-list]').setAttribute('hidden', ''); lpbox.classList.remove('is-open'); return; }
 		var wbox = e.target.closest && e.target.closest('[data-ppws]');
@@ -1302,6 +1381,11 @@
 			return;
 		}
 		if (e.target.matches('[data-picker-input]')) { var pb = e.target.closest('[data-picker]'); pickerPaint(pb, e.target.value); pickerOpen(pb, true); return; }
+		if (e.target.matches('[data-spick-input]')) {
+			var sb = e.target.closest('[data-spick]'), sq = e.target.value;
+			clearTimeout(wsSearchTimer); wsSearchTimer = setTimeout(function () { spickSearch(sb, sq); }, 250);
+			return;
+		}
 		if (e.target.matches('[data-lpick-input]')) {
 			var lpb = e.target.closest('[data-lpick-box]'), lpq = e.target.value;
 			clearTimeout(wsSearchTimer); wsSearchTimer = setTimeout(function () { lpickSearch(lpb, lpq); }, 250);
@@ -1334,7 +1418,7 @@
 			var target = key === 'qp' || key === 'ms' || key === 'ppws' ? S.pp : (key === 'prqp' || key === 'prsol' || key === 'prws' ? S.pr : (key === 'wspdf' || key === 'wsans' ? S.ws : L));
 			var prop = { wspdf: 'pdf', wsans: 'ans', prqp: 'qp', prsol: 'sol' }[key] || key;
 			root.classList.add('st-busy');
-			upload(file, 'pdf').then(function (info) { root.classList.remove('st-busy'); if (key === 'ppws' || key === 'prws') { target.wsPdfs.push(info); } else { target[prop] = info; } if (target !== L) { target.error = ''; } render(); })
+			upload(file, 'pdf').then(function (info) { root.classList.remove('st-busy'); if (key === 'ppws' || key === 'prws') { target.wsPdfs.push(info); } else { target[prop] = info; if (key === 'ws') { L.wsLink = null; L.wsPage = ''; } } if (target !== L) { target.error = ''; } render(); })
 				.catch(function (err) { root.classList.remove('st-busy'); if (target !== L) { target.error = err.message; } else { toast(err.message); } render(); });
 		} else if (el.matches('[data-quiz-file]')) {
 			var qf = el.files && el.files[0];
@@ -1473,6 +1557,7 @@
 			W.publishing = true; W.error = ''; render();
 			var wbody = { id: W.id, title: W.title, level: W.level, topic: W.subtopic || W.topic, description: W.desc, answers: W.ans ? W.ans.id : 0 };
 			if (W.pdf && !W.pdf.keep) { wbody.pdf = W.pdf.id; }
+			if (W.lesson) { wbody.lesson = W.lesson.id; }
 			api('studio/worksheets', { method: 'POST', body: wbody }).then(function (d) { W.publishing = false; W.published = d; refreshContent(); render(); })
 				.catch(function (err) { W.publishing = false; W.error = err.message; render(); });
 			return;
@@ -1491,6 +1576,25 @@
 		if ((el = e.target.closest('[data-sg-cancelall]'))) { G.confirmAll = false; render(); return; }
 		if ((el = e.target.closest('[data-sg-addall]'))) { G.scanning = true; render(); sgApply(api('studio/suggestions/add', { method: 'POST', body: { all: true } }), function (d) { return d.created + (d.created === 1 ? ' draft lesson created' : ' draft lessons created') + ' — find them under Your content'; }).then(refreshContent); return; }
 		if ((el = e.target.closest('[data-sg-togglehidden]'))) { G.showHidden = !G.showHidden; render(); return; }
+		// Linking worksheets and lessons (wizard, worksheet editor and the content list)
+		if ((el = e.target.closest('[data-spick-pick]'))) {
+			var pk = S.picks[el.getAttribute('data-spick-kind') + ':' + el.getAttribute('data-spick-pick')], pkey = el.getAttribute('data-spick-key');
+			if (!pk) { return; }
+			if (pkey === 'wiz-ws') { L.wsLink = pk; L.ws = null; L.wsPage = ''; render(); return; }
+			if (pkey === 'ws-lesson') { S.ws.lesson = pk; render(); return; }
+			if (pkey === 'row-lesson' && S.linking) { linkWorksheet(S.linking.id, pk.id); return; }
+			if (pkey === 'row-ws' && S.linking) { linkWorksheet(pk.id, S.linking.id); return; }
+			return;
+		}
+		if ((el = e.target.closest('[data-wslink-clear]'))) { L.wsLink = null; render(); return; }
+		if ((el = e.target.closest('[data-ws-lesson-clear]'))) { S.ws.lesson = null; render(); return; }
+		if ((el = e.target.closest('[data-goto-step]'))) { L.step = Number(el.getAttribute('data-goto-step')); window.scrollTo(0, 0); render(); return; }
+		if ((el = e.target.closest('[data-link-start]'))) {
+			S.linking = { id: Number(el.getAttribute('data-link-start')), kind: el.getAttribute('data-link-kind') }; S.confirmId = null; render();
+			var li = root.querySelector('[data-spick-input]'); if (li) { li.focus(); }
+			return;
+		}
+		if ((el = e.target.closest('[data-link-cancel]'))) { S.linking = null; render(); return; }
 		// Dashboard notifications
 		if ((el = e.target.closest('[data-notif-go]'))) {
 			var nk = el.getAttribute('data-notif-go'), ndef = NOTIFS.filter(function (n) { return n.key === nk; })[0];
