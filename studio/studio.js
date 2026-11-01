@@ -14,10 +14,55 @@
 		else if (opts.body !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.body); }
 		return fetch(B.rest + path, init).then(function (r) {
 			return r.json().catch(function () { return {}; }).then(function (data) {
-				if (!r.ok) { var e = new Error(data && data.message ? data.message : 'Something went wrong. Try again in a moment.'); e.data = data; throw e; }
+				if (!r.ok) {
+					// The security token this page loaded with lasts about a day, so a tab left open overnight gets
+					// "Cookie check failed" on its next request. Fetch a fresh token and try once more before giving up.
+					if (isStaleNonce(r, data) && !opts._retried) {
+						return refreshNonce().then(function (fresh) {
+							if (!fresh) { throw signedOutError(); }
+							var again = {}; for (var k in opts) { again[k] = opts[k]; } again._retried = true;
+							return api(path, again);
+						});
+					}
+					if (r.status === 401 || isStaleNonce(r, data)) { throw signedOutError(); }
+					var e = new Error(data && data.message ? data.message : 'Something went wrong. Try again in a moment.'); e.data = data; throw e;
+				}
 				return data;
 			});
 		});
+	}
+	function isStaleNonce(r, data) { return r.status === 403 && !!data && data.code === 'rest_cookie_invalid_nonce'; }
+	var nonceAt = Date.now(), nonceRefreshing = null;
+	/* Ask WordPress for a new token. Resolves true if it gave us one (still signed in), false if the login itself has gone. */
+	function refreshNonce() {
+		if (!B.ajax) { return Promise.resolve(false); }
+		if (nonceRefreshing) { return nonceRefreshing; }
+		nonceRefreshing = fetch(B.ajax + '?action=rest-nonce', { credentials: 'same-origin', cache: 'no-store' }).then(function (r) {
+			return r.text().then(function (t) {
+				t = (t || '').trim();
+				if (!r.ok || !/^[a-f0-9]{10}$/.test(t)) { return false; }
+				B.nonce = t; nonceAt = Date.now(); signInBanner(false); return true;
+			});
+		}).catch(function () { return false; }).then(function (ok) { nonceRefreshing = null; return ok; });
+		return nonceRefreshing;
+	}
+	// Coming back to a tab that's been in the background for a while: quietly fetch a fresh token so the first click doesn't have to retry.
+	document.addEventListener('visibilitychange', function () { if (!document.hidden && Date.now() - nonceAt > 30 * 60 * 1000) { refreshNonce(); } });
+	/* The login has expired. Say so once, above the page, with a way back in that keeps whatever Kym was in the middle of. */
+	function signedOutError() {
+		signInBanner(true);
+		var e = new Error('Your login has timed out, so that didn’t go through. Sign in again (the link at the top opens in a new tab), then come back here and try once more.');
+		e.signedOut = true;
+		return e;
+	}
+	function signInBanner(show) {
+		var b = document.querySelector('.st-signin');
+		if (!show) { if (b) { b.remove(); } return; }
+		if (b) { return; }
+		b = document.createElement('div'); b.className = 'st-signin'; b.setAttribute('role', 'alert');
+		b.innerHTML = '<span>Your login has timed out. Nothing you’ve typed is lost — sign in again in a new tab, then come back and carry on.</span>' +
+			(B.urls && B.urls.login ? '<a class="mwm-btn mwm-btn--primary" href="' + esc(B.urls.login) + '" target="_blank" rel="noopener">Sign in again</a>' : '');
+		root.parentNode.insertBefore(b, root);
 	}
 	function toast(msg) {
 		var t = document.createElement('div'); t.className = 'st-toast'; t.setAttribute('role', 'status'); t.textContent = msg;
@@ -343,7 +388,7 @@
 		return html + '</div>';
 	}
 	function issueTag(key) {
-		var all = ISSUES.Lessons.concat(ISSUES.Worksheets, ISSUES.Pathways);
+		var all = Object.keys(ISSUES).reduce(function (acc, k) { return acc.concat(ISSUES[k]); }, []);
 		var i = all.filter(function (x) { return x.key === key; })[0];
 		return i ? i.tag : key;
 	}

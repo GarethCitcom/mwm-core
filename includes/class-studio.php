@@ -62,6 +62,7 @@ class MWM_Studio {
 			'user'      => [ 'name' => $user->display_name ?: $user->user_login, 'initial' => strtoupper( mb_substr( $user->display_name ?: $user->user_login, 0, 1 ) ) ],
 			'rest'      => esc_url_raw( rest_url( MWM_REST::NS . '/' ) ),
 			'nonce'     => wp_create_nonce( 'wp_rest' ),
+			'ajax'      => admin_url( 'admin-ajax.php' ), // where the app fetches a fresh nonce once the page's own has expired
 			'site'      => home_url( '/' ),
 			'view'      => sanitize_key( (string) get_query_var( 'mwm_studio_view' ) ) ?: 'dash',
 			'editId'    => (int) ( $_GET['edit'] ?? 0 ),
@@ -88,6 +89,7 @@ class MWM_Studio {
 				'worksheets' => mwm_page_url( 'worksheets' ),
 				'calendar'   => mwm_page_url( 'calendar' ),
 				'logout'     => wp_logout_url( home_url( '/' ) ),
+				'login'      => wp_login_url( self::url() ),
 			],
 		];
 	}
