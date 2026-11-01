@@ -792,6 +792,24 @@
 	opacity: 0.6;
 	pointer-events: none;
 }
+/* Shown above the app when the login has expired mid-session; the link opens a new tab so nothing in progress is lost. */
+.st-signin {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px 20px;
+	margin: 0 0 20px;
+	padding: 14px 20px;
+	background: var(--tint);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	font-size: 14px;
+	line-height: 1.5;
+}
+.st-signin .mwm-btn {
+	flex: none;
+}
 .st-toast {
 	position: fixed;
 	left: 50%;
