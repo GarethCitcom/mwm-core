@@ -429,6 +429,50 @@ function mwm_reindex_lesson_quiz( int $lesson_id ): int {
  * ---------------------------------------------------------------------- */
 
 /**
+ * Put a worksheet that already exists on a lesson's page, or take it off again with $lesson_id = 0.
+ * A lesson has one worksheet, so one already there is set loose rather than trashed: it keeps its own page.
+ * The worksheet takes the lesson's level and topic so it files alongside it.
+ */
+function mwm_link_worksheet( int $ws_id, int $lesson_id ): array|WP_Error {
+	if ( get_post_type( $ws_id ) !== 'mwm_worksheet' ) {
+		return new WP_Error( 'not_found', 'Worksheet not found', [ 'status' => 404 ] );
+	}
+	if ( $lesson_id && get_post_type( $lesson_id ) !== 'mwm_lesson' ) {
+		return new WP_Error( 'not_found', 'Lesson not found', [ 'status' => 404 ] );
+	}
+	$was      = (int) get_post_meta( $ws_id, 'lesson', true );
+	$replaced = '';
+	if ( $was && $was !== $lesson_id && (int) get_post_meta( $was, 'worksheet_post', true ) === $ws_id ) {
+		update_post_meta( $was, 'worksheet_post', 0 ); // The lesson it is leaving no longer has one.
+	}
+	if ( ! $lesson_id ) {
+		delete_post_meta( $ws_id, 'lesson' );
+	} else {
+		$prev = mwm_lesson_worksheet( $lesson_id );
+		if ( $prev && $prev->ID !== $ws_id ) {
+			delete_post_meta( $prev->ID, 'lesson' );
+			$replaced = mwm_title( $prev->ID );
+		}
+		update_post_meta( $ws_id, 'lesson', $lesson_id );
+		update_post_meta( $lesson_id, 'worksheet_post', $ws_id );
+		foreach ( [ 'mwm_level', 'mwm_topic' ] as $tax ) {
+			$terms = wp_get_object_terms( $lesson_id, $tax, [ 'fields' => 'ids' ] );
+			if ( $terms && ! is_wp_error( $terms ) ) {
+				wp_set_object_terms( $ws_id, $terms, $tax );
+			}
+		}
+	}
+	delete_transient( 'mwm_topic_browser' );
+	mwm_flush_pathway_cache();
+	return [
+		'worksheet'       => mwm_worksheet_data( $ws_id, false ),
+		'lesson'          => $lesson_id ? mwm_lesson_card( $lesson_id ) : null,
+		'replaced'        => $replaced,
+		'previous_lesson' => $was,
+	];
+}
+
+/**
  * The worksheet post attached to a lesson, or null. Cached in the lesson's `worksheet_post` meta.
  */
 function mwm_lesson_worksheet( int $lesson_id ): ?WP_Post {
@@ -524,7 +568,7 @@ function mwm_query_worksheets( array $args = [] ): array {
  * Paged worksheet query, same shape as mwm_query_lessons_paged().
  */
 function mwm_query_worksheets_paged( array $args = [] ): array {
-	$a   = array_merge( [ 'level' => '', 'topic' => '', 'subtopic' => '', 'search' => '', 'per_page' => -1, 'page' => 1, 'exclude' => [], 'include' => [] ], $args );
+	$a   = array_merge( [ 'level' => '', 'topic' => '', 'subtopic' => '', 'search' => '', 'per_page' => -1, 'page' => 1, 'exclude' => [], 'include' => [], 'unlinked' => false ], $args );
 	$tax = [];
 	if ( $a['level'] ) {
 		$tax[] = [ 'taxonomy' => 'mwm_level', 'field' => 'slug', 'terms' => (array) $a['level'] ];
@@ -545,6 +589,13 @@ function mwm_query_worksheets_paged( array $args = [] ): array {
 	}
 	if ( $a['search'] ) {
 		$q['s'] = $a['search'];
+	}
+	if ( $a['unlinked'] ) { // Only worksheets not on a lesson page (the Studio offers these when linking one to a lesson).
+		$q['meta_query'] = [
+			'relation' => 'OR',
+			[ 'key' => 'lesson', 'compare' => 'NOT EXISTS' ],
+			[ 'key' => 'lesson', 'value' => [ '', '0' ], 'compare' => 'IN' ],
+		];
 	}
 	$query = new WP_Query( $q );
 	$out   = [];

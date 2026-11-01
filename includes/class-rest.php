@@ -59,6 +59,7 @@ class MWM_REST {
 		register_rest_route( $ns, '/studio/lessons/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_lesson' ] ] ) );
 		register_rest_route( $ns, '/studio/worksheets', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_save_worksheet' ] ] ) );
 		register_rest_route( $ns, '/studio/worksheets/(?P<id>\d+)', array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_get_worksheet' ] ] ) );
+		register_rest_route( $ns, '/studio/worksheets/(?P<id>\d+)/lesson', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_link_worksheet' ] ] ) );
 		register_rest_route( $ns, '/studio/subtopics', array_merge( $studio, [ 'methods' => 'POST', 'callback' => [ __CLASS__, 'studio_create_subtopic' ] ] ) );
 		register_rest_route( $ns, '/studio/pathways', [
 			array_merge( $studio, [ 'methods' => 'GET', 'callback' => [ __CLASS__, 'studio_pathways' ] ] ),
@@ -147,6 +148,7 @@ class MWM_REST {
 			'topic'    => sanitize_title( (string) $r->get_param( 'topic' ) ),
 			'subtopic' => sanitize_title( (string) $r->get_param( 'subtopic' ) ),
 			'search'   => sanitize_text_field( (string) $r->get_param( 'search' ) ),
+			'unlinked' => (bool) $r->get_param( 'unlinked' ),
 			'per_page' => min( 48, max( 1, (int) ( $r->get_param( 'per_page' ) ?: 24 ) ) ),
 			'page'     => max( 1, (int) ( $r->get_param( 'page' ) ?: 1 ) ),
 		] );
@@ -560,7 +562,16 @@ class MWM_REST {
 			}
 		}
 		// Worksheet + answers PDFs live on a worksheet post that has its own page.
-		if ( array_key_exists( 'worksheet', $p ) || array_key_exists( 'answers', $p ) ) {
+		$ws_link = (int) ( $p['worksheet_post'] ?? 0 );
+		if ( $ws_link && get_post_type( $ws_link ) === 'mwm_worksheet' ) {
+			// Kym picked a worksheet that is already on the site rather than uploading a PDF.
+			mwm_link_worksheet( $ws_link, $id );
+			$ans_id = (int) ( $p['answers'] ?? 0 );
+			if ( $ans_id && get_post_type( $ans_id ) === 'attachment' ) {
+				update_post_meta( $ws_link, 'answers', $ans_id );
+				wp_update_post( [ 'ID' => $ans_id, 'post_parent' => $ws_link ] );
+			}
+		} elseif ( array_key_exists( 'worksheet', $p ) || array_key_exists( 'answers', $p ) ) {
 			$current = mwm_lesson_worksheet( $id );
 			$pdf_id  = array_key_exists( 'worksheet', $p ) ? (int) $p['worksheet'] : ( $current ? (int) get_post_meta( $current->ID, 'pdf', true ) : 0 );
 			$ans_id  = array_key_exists( 'answers', $p ) ? (int) $p['answers'] : ( $current ? (int) get_post_meta( $current->ID, 'answers', true ) : 0 );
@@ -664,7 +675,30 @@ class MWM_REST {
 				wp_set_object_terms( $id, (int) $term->term_id, 'mwm_topic' );
 			}
 		}
+		if ( ! empty( $p['lesson'] ) ) { // Goes with a lesson: put it on that lesson's page too.
+			mwm_link_worksheet( $id, (int) $p['lesson'] );
+		}
 		return rest_ensure_response( mwm_worksheet_data( $id, false ) );
+	}
+
+	/**
+	 * POST /studio/worksheets/{id}/lesson  { lesson: <lesson id, or 0 to take it off> }
+	 * Links a worksheet that already exists to a lesson, from either side of the content list.
+	 */
+	public static function studio_link_worksheet( WP_REST_Request $r ): WP_REST_Response|WP_Error {
+		$p   = (array) $r->get_json_params();
+		$res = mwm_link_worksheet( (int) $r['id'], (int) ( $p['lesson'] ?? 0 ) );
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+		$ws = $res['worksheet']['title'];
+		if ( $res['lesson'] ) {
+			$res['message'] = '“' . $ws . '” is now on the lesson “' . $res['lesson']['title'] . '”.'
+				. ( $res['replaced'] ? ' Its old worksheet “' . $res['replaced'] . '” is still on the site, on its own page.' : '' );
+		} else {
+			$res['message'] = '“' . $ws . '” is no longer on a lesson. It still has its own page.';
+		}
+		return rest_ensure_response( $res );
 	}
 
 	/**
