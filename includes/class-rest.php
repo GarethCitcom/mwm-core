@@ -23,8 +23,17 @@ class MWM_REST {
 	 */
 	public static function cache_headers( $response, $server, $request ) {
 		$route = (string) $request->get_route();
-		if ( $response instanceof WP_REST_Response && $request->get_method() === 'GET' && ! is_user_logged_in()
-			&& str_starts_with( $route, '/mwm/v1/' ) && ! str_starts_with( $route, '/mwm/v1/studio' ) && ! str_starts_with( $route, '/mwm/v1/me' ) ) {
+		if ( ! str_starts_with( $route, '/mwm/v1/' ) ) {
+			return $response;
+		}
+		$private = is_user_logged_in() || str_starts_with( $route, '/mwm/v1/studio' ) || str_starts_with( $route, '/mwm/v1/me' );
+		if ( $private ) {
+			// The Studio and anything per-user: never cached, by browsers, CDNs or the host's page cache.
+			MWM_Cache::no_cache();
+			if ( $response instanceof WP_REST_Response ) {
+				$response->header( 'Cache-Control', 'private, no-store, max-age=0' );
+			}
+		} elseif ( $response instanceof WP_REST_Response && $request->get_method() === 'GET' ) {
 			$response->header( 'Cache-Control', 'public, max-age=300, stale-while-revalidate=600' );
 		}
 		return $response;

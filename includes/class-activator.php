@@ -17,6 +17,8 @@ class MWM_Activator {
 		self::create_pages();
 		MWM_YouTube::schedule();
 		flush_rewrite_rules();
+		MWM_Cache::refresh_rocket_config(); // Picks up the Studio / API "never cache" rules in AccelerateWP or WP Rocket.
+		MWM_Cache::purge_all();
 		update_option( 'mwm_core_version', MWM_CORE_VERSION );
 	}
 
@@ -35,6 +37,8 @@ class MWM_Activator {
 			self::retire_old_pathways();
 		}
 		flush_rewrite_rules();
+		MWM_Cache::refresh_rocket_config(); // Picks up the Studio / API "never cache" rules in AccelerateWP or WP Rocket.
+		MWM_Cache::purge_all();
 		update_option( 'mwm_core_version', MWM_CORE_VERSION );
 	}
 
