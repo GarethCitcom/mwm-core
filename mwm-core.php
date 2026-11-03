@@ -3,7 +3,7 @@
  * Plugin Name:       MWM Core
  * Plugin URI:        https://mathswithmelissa.co.uk
  * Description:       Data model, REST API, YouTube playlist sync and the front-end Studio for Maths with Melissa.
- * Version:           1.2.0
+ * Version:           1.2.1
  * Requires at least: 6.5
  * Requires PHP:      8.1
  * Author:            Maths with Melissa
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'MWM_CORE_VERSION', '1.2.0' );
+define( 'MWM_CORE_VERSION', '1.2.1' );
 define( 'MWM_CORE_FILE', __FILE__ );
 define( 'MWM_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MWM_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -28,6 +28,7 @@ require_once MWM_CORE_DIR . 'includes/class-youtube.php';
 require_once MWM_CORE_DIR . 'includes/class-rewrites.php';
 require_once MWM_CORE_DIR . 'includes/class-redirects.php';
 require_once MWM_CORE_DIR . 'includes/class-rest.php';
+require_once MWM_CORE_DIR . 'includes/class-cache.php';
 require_once MWM_CORE_DIR . 'includes/class-stats.php';
 require_once MWM_CORE_DIR . 'includes/class-studio.php';
 require_once MWM_CORE_DIR . 'includes/class-activator.php';
@@ -50,6 +51,7 @@ add_action( 'plugins_loaded', static function () {
 	MWM_Rewrites::init();
 	MWM_Redirects::init();
 	MWM_REST::init();
+	MWM_Cache::init();
 	MWM_Studio::init();
 	add_action( 'init', [ 'MWM_Activator', 'maybe_upgrade' ], 99 );
 } );

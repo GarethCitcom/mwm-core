@@ -37,6 +37,15 @@ Lesson fields: `youtube_url`, `youtube_id`, `duration_seconds`, `thumbnail_url`,
 
 Activation creates the pages the theme navigates to and stores their IDs in the `mwm_pages` option: Home, Learn Maths (`/learn-maths/`), Revision (`/revision/`), Exam calendar, Past papers, Predicted papers, Quick Maths, Gaming & Story Maths, My Learning, Privacy. Each page holds one ACF block from the theme. Pages added in later plugin versions are created on the first request after the update (`MWM_Activator::maybe_upgrade`, keyed on the plugin version), so no reactivation is needed. Pretty URLs: `/learn-maths/{level}/{topic}/`, `/revision/{level}/` and `/revision/{level}/{topic}/` (old `/revision/{level}/{board}/` links redirect), `/studio/{view}/`.
 
+## Caching
+
+Page caches (AccelerateWP, which is WP Rocket underneath, and also WP Rocket, LiteSpeed Cache, W3 Total Cache, WP Super Cache, WP Fastest Cache) are handled in `MWM_Cache`:
+
+- `/studio/` and `/wp-json/` are added to WP Rocket's "never cache" list through the `rocket_cache_reject_uri` filter (the config file is regenerated on plugin update), and every Studio page and Studio / per-user API response sets `DONOTCACHEPAGE`, the LiteSpeed no-cache control and `Cache-Control: private, no-store`.
+- Every Studio write (any POST or DELETE under `/mwm/v1/studio/`) clears the whole page cache at the end of the request, because most Studio edits change only meta, options or term meta and cache plugins do not notice those. Hosts with their own cache can hook `mwm_purge_page_cache`.
+
+If a cache still serves the Studio stale, add `/studio/(.*)` under AccelerateWP → Advanced Rules → Never Cache URL(s) and clear the cache once.
+
 ## REST API (`/wp-json/mwm/v1/`)
 
 Public: `lessons`, `topics`, `pathway` (`?level&topic`, or a level's overview), `exam-dates`, `quiz/{id}`. Signed-in: `me/progress` (GET/POST). Studio (capability `mwm_manage_studio`, granted to administrators and editors): `studio/video`, `studio/lessons`, `studio/lessons/{id}`, `studio/upload`, `studio/quiz/validate`, `studio/past-papers`, `studio/predicted-papers`, `studio/pathways` (GET overviews or one pathway, POST an order), `studio/revision-plan`, `studio/exam-dates`, `studio/content`, `studio/content/{id}` (DELETE = bin), `studio/content/{id}/restore`, `studio/sync`, `studio/dashboard`, `studio/stats`.
